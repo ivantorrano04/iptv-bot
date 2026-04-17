@@ -14,7 +14,15 @@ async function getBrowser() {
         '--disable-gpu',
         '--disable-web-security',
         '--disable-features=VizDisplayCompositor',
-        '--single-process'
+        '--single-process',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--disable-translate',
+        '--no-first-run',
+        '--no-zygote',
+        '--js-flags=--max-old-space-size=256'
       ]
     };
     // Use system Chromium on cloud (Render/Docker)
@@ -223,7 +231,7 @@ async function extractToken(channelName, channelCode) {
   console.log(`[extractToken] Opening: ${playerUrl}`);
 
   const b = await getBrowser();
-  const MAX_RETRIES = 3;
+  const MAX_RETRIES = process.env.PUPPETEER_EXECUTABLE_PATH ? 2 : 3;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     console.log(`[extractToken] --- Round ${attempt}/${MAX_RETRIES} ---`);
@@ -261,6 +269,7 @@ async function extractToken(channelName, channelCode) {
       if (m3u8Url) {
         console.log(`[extractToken] SUCCESS (round ${attempt}) via network intercept`);
         await context.close();
+        await maybeCloseBrowser();
         return { success: true, m3u8Url, method: `network-r${attempt}` };
       }
 
@@ -278,6 +287,7 @@ async function extractToken(channelName, channelCode) {
       if (sourceUrl) {
         console.log(`[extractToken] SUCCESS (round ${attempt}) via page source`);
         await context.close();
+        await maybeCloseBrowser();
         return { success: true, m3u8Url: sourceUrl, method: `source-r${attempt}` };
       }
 
@@ -295,6 +305,7 @@ async function extractToken(channelName, channelCode) {
         if (m3u8Url) {
           console.log(`[extractToken] SUCCESS (round ${attempt}) via refresh click`);
           await context.close();
+          await maybeCloseBrowser();
           return { success: true, m3u8Url, method: `refresh-r${attempt}` };
         }
 
@@ -303,6 +314,7 @@ async function extractToken(channelName, channelCode) {
         if (sourceUrl2) {
           console.log(`[extractToken] SUCCESS (round ${attempt}) via source after refresh`);
           await context.close();
+          await maybeCloseBrowser();
           return { success: true, m3u8Url: sourceUrl2, method: `source-post-refresh-r${attempt}` };
         }
       }
@@ -314,6 +326,7 @@ async function extractToken(channelName, channelCode) {
       if (m3u8Url) {
         console.log(`[extractToken] SUCCESS (round ${attempt}) via reload`);
         await context.close();
+        await maybeCloseBrowser();
         return { success: true, m3u8Url, method: `reload-r${attempt}` };
       }
 
@@ -322,6 +335,7 @@ async function extractToken(channelName, channelCode) {
       if (sourceUrl3) {
         console.log(`[extractToken] SUCCESS (round ${attempt}) via source after reload`);
         await context.close();
+        await maybeCloseBrowser();
         return { success: true, m3u8Url: sourceUrl3, method: `source-post-reload-r${attempt}` };
       }
 
@@ -341,17 +355,26 @@ async function extractToken(channelName, channelCode) {
     }
   }
 
-  // All rounds exhausted
-  console.log('[extractToken] ALL ROUNDS FAILED');
+  // All rounds exhausted — kill browser to free memory
+  console.log('[extractToken] ALL ROUNDS FAILED — closing browser to free memory');
+  await closeBrowser();
   return {
     success: false,
     error: 'No se pudo capturar el token. El canal puede estar offline o bloqueado.'
   };
 }
 
+// Close browser after each successful extraction on cloud to save memory
+async function maybeCloseBrowser() {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    // Cloud environment — close browser after each extraction
+    await closeBrowser();
+  }
+}
+
 async function closeBrowser() {
   if (browser) {
-    await browser.close();
+    try { await browser.close(); } catch(_) {}
     browser = null;
   }
 }

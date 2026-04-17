@@ -23,7 +23,7 @@ ARCHIVO_CANALES = "canales.txt"
 # Cambia esto a la URL de tu servidor en Render cuando lo despliegues
 # Ejemplo: "https://mi-iptv-bot.onrender.com"
 # Déjalo vacío para usar tu IP local
-CLOUD_SERVER_URL = ""
+CLOUD_SERVER_URL = "https://iptv-bot-kk5s.onrender.com"
 
 SERVER_PORT = 3000
 
@@ -54,14 +54,35 @@ def leer_canales(archivo):
     return canales
 
 def generar_m3u8(canales, server_base):
-    """Genera M3U8 con URLs apuntando al servidor (local o cloud)"""
+    """Extrae tokens de cada canal y genera M3U8 con URLs proxy completas"""
     contenido = "#EXTM3U\n"
-    for ch in canales:
-        encoded_name = requests.utils.quote(ch['name'])
-        url = f"{server_base}/play/{ch['code']}/{encoded_name}"
-        contenido += f'#EXTINF:-1 group-title="{ch["group"]}",{ch["name"]}\n'
-        contenido += f'{url}\n'
-    return contenido
+    ok = 0
+    fail = 0
+
+    for i, ch in enumerate(canales):
+        print(f"  [{i+1}/{len(canales)}] {ch['name']}...", end=" ", flush=True)
+        try:
+            r = requests.post(
+                f"{server_base}/api/extract",
+                json={"name": ch['name'], "code": ch['code']},
+                timeout=120
+            )
+            data = r.json()
+            if data.get('success') and data.get('m3u8Url'):
+                proxy_url = f"{server_base}/stream?url={data['m3u8Url']}"
+                contenido += f'#EXTINF:-1 group-title="{ch["group"]}",{ch["name"]}\n'
+                contenido += f'{proxy_url}\n'
+                print(f"OK ({data.get('method','?')}, {data.get('elapsed','?')})")
+                ok += 1
+            else:
+                print(f"FAIL: {data.get('error','unknown')}")
+                fail += 1
+        except Exception as e:
+            print(f"ERROR: {e}")
+            fail += 1
+
+    print(f"\n  Resultado: {ok} OK, {fail} fallidos")
+    return contenido if ok > 0 else None
 
 def subir_a_github(contenido):
     """Sube el contenido M3U8 al Gist"""
@@ -127,32 +148,52 @@ if __name__ == "__main__":
     canales = leer_canales(ARCHIVO_CANALES)
     print(f"[OK] {len(canales)} canales cargados desde {ARCHIVO_CANALES}")
 
-    # Generar y subir
+    # Extraer tokens y generar lista
+    print(f"\nExtrayendo tokens (esto puede tardar ~{len(canales)*10}s)...\n")
     contenido = generar_m3u8(canales, server_base)
-    print(f"\n--- Lista M3U8 generada ---")
-    print(contenido)
-    print(f"--- Fin de la lista ---\n")
 
-    subir_a_github(contenido)
+    if contenido:
+        print(f"\n--- Lista M3U8 generada ---")
+        print(contenido)
+        print(f"--- Fin de la lista ---\n")
+        subir_a_github(contenido)
+    else:
+        print("\n[!] No se pudo extraer ningún canal")
 
-    # Modo vigilancia
-    print(f"\nVigilando cambios en '{ARCHIVO_CANALES}'...")
-    print(f"(Modifica el archivo para actualizar la lista automáticamente)\n")
-
+    # Bucle: refrescar tokens cada 3 horas + vigilar cambios en canales.txt
+    REFRESH_INTERVAL = 3 * 60 * 60  # 3 horas en segundos
     ultima_modificacion = os.path.getmtime(ARCHIVO_CANALES)
+    ultimo_refresh = time.time()
+
+    print(f"\nModo automático activado:")
+    print(f"  - Tokens se refrescan cada 3 horas")
+    print(f"  - Si editas '{ARCHIVO_CANALES}', se regenera la lista\n")
 
     while True:
         try:
+            # Comprobar cambios en canales.txt
             if os.path.exists(ARCHIVO_CANALES):
                 tiempo_actual = os.path.getmtime(ARCHIVO_CANALES)
                 if tiempo_actual > ultima_modificacion:
-                    print(f"\n[{time.strftime('%H:%M:%S')}] Cambios detectados en {ARCHIVO_CANALES}")
+                    print(f"\n[{time.strftime('%H:%M:%S')}] Cambios en {ARCHIVO_CANALES} detectados")
                     canales = leer_canales(ARCHIVO_CANALES)
-                    print(f"  {len(canales)} canales")
+                    print(f"  {len(canales)} canales — extrayendo tokens...\n")
                     contenido = generar_m3u8(canales, server_base)
-                    subir_a_github(contenido)
+                    if contenido:
+                        subir_a_github(contenido)
                     ultima_modificacion = tiempo_actual
-            time.sleep(3)
+                    ultimo_refresh = time.time()
+
+            # Refrescar tokens periódicamente
+            if time.time() - ultimo_refresh >= REFRESH_INTERVAL:
+                print(f"\n[{time.strftime('%H:%M:%S')}] Refrescando tokens (cada 3h)...\n")
+                canales = leer_canales(ARCHIVO_CANALES)
+                contenido = generar_m3u8(canales, server_base)
+                if contenido:
+                    subir_a_github(contenido)
+                ultimo_refresh = time.time()
+
+            time.sleep(10)
         except KeyboardInterrupt:
             print("\nDetenido.")
             break
