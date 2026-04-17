@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPTV Stream Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0a0a0f;
+            --bg2: #12121a;
+            --card: #1a1a2e;
+            --card-hover: #222240;
+            --accent: #e50914;
+            --accent2: #ff3d47;
+            --green: #00e676;
+            --yellow: #ffab00;
+            --text: #e8e8e8;
+            --text2: #888;
+            --border: #2a2a3e;
+            --radius: 12px;
+        }
+        body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+        /* HEADER */
+        .header { background: linear-gradient(135deg, #0f0f1a 0%, #1a0a1e 100%); border-bottom: 1px solid var(--border); padding: 15px 25px; position: sticky; top: 0; z-index: 100; }
+        .header-top { display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap; }
+        .logo { display: flex; align-items: center; gap: 10px; }
+        .logo h1 { font-size: 20px; background: linear-gradient(135deg, var(--accent), #ff6b6b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: 1px; }
+        .logo span { font-size: 11px; background: var(--accent); color: white; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+
+        /* STATS BAR */
+        .stats-bar { display: flex; gap: 20px; font-size: 12px; color: var(--text2); }
+        .stat { display: flex; align-items: center; gap: 4px; }
+        .stat .dot { width: 6px; height: 6px; border-radius: 50%; }
+        .dot-green { background: var(--green); }
+        .dot-red { background: var(--accent); }
+        .dot-yellow { background: var(--yellow); }
+
+        /* SEARCH */
+        .search-bar { display: flex; gap: 10px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+        .search-bar input { flex: 1; min-width: 200px; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 10px 16px; border-radius: 25px; font-size: 14px; outline: none; transition: border 0.2s; }
+        .search-bar input:focus { border-color: var(--accent); }
+        .search-bar input::placeholder { color: #555; }
+
+        /* FILTER CHIPS */
+        .filters { display: flex; gap: 6px; padding: 12px 25px 8px; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+        .filters::-webkit-scrollbar { display: none; }
+        .chip { padding: 7px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; border: 1px solid var(--border); background: var(--bg2); color: var(--text2); transition: all 0.2s; user-select: none; }
+        .chip:hover { border-color: var(--accent); color: var(--text); }
+        .chip.active { background: var(--accent); border-color: var(--accent); color: white; }
+        .chip-sep { width: 1px; background: var(--border); margin: 0 4px; flex-shrink: 0; }
+
+        /* SECONDARY FILTERS */
+        .sub-filters { display: flex; gap: 6px; padding: 4px 25px 10px; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+        .sub-filters::-webkit-scrollbar { display: none; }
+        .sub-chip { padding: 5px 12px; border-radius: 15px; font-size: 11px; cursor: pointer; white-space: nowrap; border: 1px solid transparent; background: rgba(255,255,255,0.05); color: var(--text2); transition: all 0.2s; }
+        .sub-chip:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+        .sub-chip.active { background: rgba(229,9,20,0.2); border-color: var(--accent); color: var(--accent2); }
+
+        /* MAIN CONTENT */
+        .main { padding: 0 25px 25px; }
+        .section-title { display: flex; justify-content: space-between; align-items: center; padding: 15px 0; }
+        .section-title h2 { font-size: 16px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+        .section-title h2 .count { font-size: 12px; color: var(--text2); font-weight: 400; }
+        .section-title .view-toggle { display: flex; gap: 5px; }
+        .section-title .view-toggle button { background: var(--bg2); border: 1px solid var(--border); color: var(--text2); padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+        .section-title .view-toggle button.active { background: var(--accent); border-color: var(--accent); color: white; }
+
+        /* GRID */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+        .grid.compact { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+
+        /* CARD */
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: all 0.25s; position: relative; cursor: default; }
+        .card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 25px rgba(229,9,20,0.15); }
+        .card-img { width: 100%; height: 100px; background: #000; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+        .card-img img { max-width: 80%; max-height: 80%; object-fit: contain; }
+        .card-img .placeholder { font-size: 28px; opacity: 0.3; }
+        .card-status { position: absolute; top: 8px; right: 8px; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+        .status-online { background: rgba(0,230,118,0.2); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
+        .status-offline { background: rgba(255,255,255,0.1); color: #666; border: 1px solid rgba(255,255,255,0.1); }
+        .card-fav { position: absolute; top: 8px; left: 8px; background: rgba(0,0,0,0.6); border: none; color: #555; font-size: 16px; cursor: pointer; padding: 4px 6px; border-radius: 6px; transition: all 0.2s; line-height: 1; }
+        .card-fav:hover, .card-fav.fav { color: var(--yellow); }
+        .card-body { padding: 12px; }
+        .card-body h3 { font-size: 13px; font-weight: 600; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .card-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text2); margin-bottom: 10px; }
+        .card-meta .flag { font-size: 14px; }
+        .card-meta .viewers { display: flex; align-items: center; gap: 3px; }
+        .card-actions { display: flex; gap: 6px; }
+        .card-actions button { flex: 1; padding: 7px 0; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 11px; transition: all 0.15s; }
+        .btn-open { background: var(--accent); color: white; }
+        .btn-open:hover { background: var(--accent2); }
+        .btn-copy { background: rgba(255,255,255,0.08); color: var(--text); border: 1px solid var(--border) !important; }
+        .btn-copy:hover { background: rgba(255,255,255,0.15); }
+        .btn-auto { background: var(--green); color: #000; font-weight: 700; }
+        .btn-auto:hover { background: #00c864; }
+        .btn-auto:disabled { background: #333; color: #666; cursor: wait; }
+        .btn-auto.extracting { animation: pulse-green 1s infinite; }
+        @keyframes pulse-green { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        /* M3U8 TOOL PANEL */
+        .tool-panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; }
+        .tool-panel h3 { font-size: 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .tool-panel .steps { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+        .tool-panel .step { flex: 1; min-width: 150px; background: var(--bg); border-radius: 8px; padding: 10px; font-size: 11px; color: var(--text2); }
+        .tool-panel .step strong { display: block; color: var(--text); margin-bottom: 4px; font-size: 12px; }
+        .tool-panel .step .num { display: inline-block; background: var(--accent); color: white; width: 18px; height: 18px; border-radius: 50%; text-align: center; line-height: 18px; font-size: 10px; font-weight: 700; margin-right: 4px; }
+        .m3u8-input-group { display: flex; gap: 8px; flex-wrap: wrap; }
+        .m3u8-input-group input { flex: 1; min-width: 250px; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 10px 14px; border-radius: 8px; font-size: 13px; font-family: 'Consolas', monospace; outline: none; }
+        .m3u8-input-group input:focus { border-color: var(--accent); }
+        .m3u8-input-group button { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 12px; white-space: nowrap; }
+        .btn-generate { background: var(--accent); color: white; }
+        .btn-generate:hover { background: var(--accent2); }
+
+        .result-box { margin-top: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: none; }
+        .result-box.visible { display: block; }
+        .result-box label { font-size: 11px; color: var(--text2); display: block; margin-bottom: 6px; }
+        .result-box .url-display { font-family: 'Consolas', monospace; font-size: 12px; color: var(--green); word-break: break-all; padding: 8px; background: rgba(0,230,118,0.05); border-radius: 6px; border: 1px solid rgba(0,230,118,0.15); }
+        .result-box .result-actions { display: flex; gap: 6px; margin-top: 8px; }
+        .result-box .result-actions button { padding: 6px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: 600; }
+        .btn-copy-result { background: var(--green); color: #000; }
+        .btn-vlc { background: #ff8c00; color: white; }
+
+        /* EVENTS SECTION */
+        .event-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: all 0.25s; }
+        .event-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+        .event-header { padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+        .event-header .tournament { font-size: 11px; color: var(--text2); }
+        .event-header .time { font-size: 11px; font-weight: 600; }
+        .event-live { color: var(--accent); animation: blink 1.5s infinite; }
+        @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .event-teams { display: flex; align-items: center; justify-content: center; gap: 15px; padding: 15px; }
+        .event-teams img { width: 36px; height: 36px; object-fit: contain; }
+        .event-teams .vs { font-size: 12px; color: var(--text2); font-weight: 700; }
+        .event-teams .team-name { font-size: 11px; text-align: center; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .event-channels { padding: 0 12px 12px; display: flex; flex-wrap: wrap; gap: 4px; }
+        .event-ch-btn { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text2); font-size: 10px; cursor: pointer; transition: all 0.15s; }
+        .event-ch-btn:hover { border-color: var(--accent); color: var(--text); }
+
+        /* TOAST */
+        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px); background: var(--green); color: #000; padding: 10px 24px; border-radius: 25px; font-size: 13px; font-weight: 600; z-index: 999; transition: transform 0.3s ease; pointer-events: none; }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+
+        /* LOADING */
+        .loading { text-align: center; padding: 60px 0; color: var(--text2); }
+        .loading .spinner { width: 30px; height: 30px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* EMPTY STATE */
+        .empty { text-align: center; padding: 60px 20px; color: var(--text2); }
+        .empty .icon { font-size: 40px; margin-bottom: 10px; opacity: 0.3; }
+        .empty p { font-size: 13px; }
+
+        /* SCROLLBAR */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        /* TAB PANELS */
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* RESPONSIVE */
+        @media (max-width: 768px) {
+            .header { padding: 10px 15px; }
+            .filters, .sub-filters { padding-left: 15px; padding-right: 15px; }
+            .main { padding: 0 15px 15px; }
+            .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+            .card-img { height: 70px; }
+            .stats-bar { display: none; }
+            .tool-panel .steps { flex-direction: column; }
+        }
+
+        /* COUNTRY FLAG BADGES */
+        .country-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; }
+
+        /* PROVIDER TAGS */
+        .provider-tag { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
+        .tag-movistar { background: rgba(0,100,200,0.2); color: #4dabf7; }
+        .tag-dazn { background: rgba(0,0,0,0.3); color: #f5c518; border: 1px solid rgba(245,197,24,0.3); }
+        .tag-laliga { background: rgba(255,87,34,0.2); color: #ff7043; }
+        .tag-euro { background: rgba(0,0,0,0.3); color: #aaa; }
+
+        /* MODAL */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 200; align-items: center; justify-content: center; }
+        .modal-overlay.show { display: flex; }
+        .modal { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px; max-width: 550px; width: 90%; max-height: 80vh; overflow-y: auto; }
+        .modal h3 { margin-bottom: 16px; font-size: 16px; }
+        .modal .close-btn { float: right; background: none; border: none; color: var(--text2); font-size: 20px; cursor: pointer; }
+        .modal .workflow-step { display: flex; gap: 12px; margin-bottom: 14px; }
+        .modal .workflow-step .num { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+        .modal .workflow-step .desc { font-size: 13px; color: var(--text2); line-height: 1.5; }
+        .modal .workflow-step .desc strong { color: var(--text); }
+    </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+    <div class="header-top">
+        <div class="logo">
+            <h1>IPTV STREAM DASHBOARD</h1>
+            <span>LIVE</span>
+        </div>
+        <div class="stats-bar">
+            <div class="stat"><div class="dot dot-green"></div> <span id="stat-total">0</span> canales</div>
+            <div class="stat"><div class="dot dot-green"></div> <span id="stat-online">0</span> online</div>
+            <div class="stat"><div class="dot dot-red"></div> <span id="stat-es">0</span> España</div>
+            <div class="stat"><div class="dot dot-yellow"></div> <span id="stat-favs">0</span> favoritos</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+            <button onclick="showWorkflow()" style="background:var(--bg2);border:1px solid var(--border);color:var(--text2);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;">Workflow</button>
+            <button onclick="refreshAll()" style="background:var(--accent);border:none;color:white;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;">Actualizar</button>
+        </div>
+    </div>
+    <div class="search-bar">
+        <input type="text" id="search-input" placeholder="Buscar canal... (ej: Movistar, DAZN, LaLiga, NBA, F1...)" oninput="applyFilters()">
+    </div>
+</div>
+
+<!-- MAIN FILTER CHIPS -->
+<div class="filters" id="main-filters">
+    <div class="chip active" data-filter="spain" onclick="setMainFilter(this)">🇪🇸 España</div>
+    <div class="chip" data-filter="favorites" onclick="setMainFilter(this)">⭐ Favoritos</div>
+    <div class="chip-sep"></div>
+    <div class="chip" data-filter="movistar" onclick="setMainFilter(this)">Movistar</div>
+    <div class="chip" data-filter="dazn" onclick="setMainFilter(this)">DAZN</div>
+    <div class="chip" data-filter="laliga" onclick="setMainFilter(this)">LaLiga</div>
+    <div class="chip" data-filter="champions" onclick="setMainFilter(this)">Champions</div>
+    <div class="chip-sep"></div>
+    <div class="chip" data-filter="futbol" onclick="setMainFilter(this)">⚽ Fútbol</div>
+    <div class="chip" data-filter="f1" onclick="setMainFilter(this)">🏎️ F1</div>
+    <div class="chip" data-filter="nba" onclick="setMainFilter(this)">🏀 NBA</div>
+    <div class="chip" data-filter="tenis" onclick="setMainFilter(this)">🎾 Tenis</div>
+    <div class="chip-sep"></div>
+    <div class="chip" data-filter="gb" onclick="setMainFilter(this)">🇬🇧 UK</div>
+    <div class="chip" data-filter="it" onclick="setMainFilter(this)">🇮🇹 Italia</div>
+    <div class="chip" data-filter="de" onclick="setMainFilter(this)">🇩🇪 Alemania</div>
+    <div class="chip" data-filter="fr" onclick="setMainFilter(this)">🇫🇷 Francia</div>
+    <div class="chip" data-filter="pt" onclick="setMainFilter(this)">🇵🇹 Portugal</div>
+    <div class="chip" data-filter="us" onclick="setMainFilter(this)">🇺🇸 USA</div>
+    <div class="chip" data-filter="all" onclick="setMainFilter(this)">🌍 Todos</div>
+    <div class="chip-sep"></div>
+    <div class="chip" data-filter="events" onclick="setMainFilter(this)">📡 Eventos Live</div>
+</div>
+
+<!-- SUB FILTERS (status) -->
+<div class="sub-filters">
+    <div class="sub-chip active" data-status="all" onclick="setStatusFilter(this)">Todos</div>
+    <div class="sub-chip" data-status="online" onclick="setStatusFilter(this)">🟢 Online</div>
+    <div class="sub-chip" data-status="offline" onclick="setStatusFilter(this)">⚫ Offline</div>
+    <div class="sub-chip" data-sort="name" onclick="setSortFilter(this)">A-Z</div>
+    <div class="sub-chip" data-sort="viewers" onclick="setSortFilter(this)">👀 Viewers</div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="main">
+
+    <!-- M3U8 PROXY TOOL -->
+    <div class="tool-panel" id="tool-panel">
+        <h3>🔧 Generador de enlaces M3U8 con Proxy</h3>
+        <div class="steps">
+            <div class="step"><strong><span class="num">1</span> Abrir canal</strong>Click en "Abrir Player" para ir al reproductor web</div>
+            <div class="step"><strong><span class="num">2</span> Refresh + Token</strong>Click en el botón Refresh de la página, espera a que cargue</div>
+            <div class="step"><strong><span class="num">3</span> Extraer M3U8</strong>Usa Video DownloadHelper para sacar la URL .m3u8</div>
+            <div class="step"><strong><span class="num">4</span> Pegar aquí</strong>Pega el m3u8 y genera el enlace proxied funcional</div>
+        </div>
+        <div class="m3u8-input-group">
+            <input type="text" id="m3u8-input" placeholder="Pega aquí la URL .m3u8 extraída del reproductor...">
+            <button class="btn-generate" onclick="generateProxyUrl()">Generar Enlace</button>
+            <button style="background:var(--bg);border:1px solid var(--border);color:var(--text2);border-radius:8px;cursor:pointer;padding:10px 14px;font-size:12px;" onclick="document.getElementById('m3u8-input').value='';document.getElementById('result-box').classList.remove('visible')">Limpiar</button>
+        </div>
+        <div class="result-box" id="result-box">
+            <label>Enlace M3U8 funcional (con headers via proxy):</label>
+            <div class="url-display" id="proxy-result"></div>
+            <div class="result-actions">
+                <button class="btn-copy-result" onclick="copyResult()">📋 Copiar enlace</button>
+                <button class="btn-vlc" onclick="openInVLC()">▶️ Abrir en VLC</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CHANNELS TAB -->
+    <div class="tab-content active" id="tab-channels">
+        <div class="section-title">
+            <h2 id="section-heading">🇪🇸 Canales de España <span class="count" id="channel-count"></span></h2>
+            <div class="view-toggle">
+                <button class="active" onclick="setView('normal', this)">Normal</button>
+                <button onclick="setView('compact', this)">Compacto</button>
+            </div>
+        </div>
+        <div class="grid" id="channels-grid"></div>
+    </div>
+
+    <!-- EVENTS TAB -->
+    <div class="tab-content" id="tab-events">
+        <div class="section-title">
+            <h2>📡 Eventos Deportivos en Vivo</h2>
+        </div>
+        <div class="filters" style="padding:0 0 15px;" id="sport-filters">
+            <div class="chip active" data-sport="soccer" onclick="loadSportEvents(this, 'soccer')">⚽ Fútbol</div>
+            <div class="chip" data-sport="basketball" onclick="loadSportEvents(this, 'basketball')">🏀 Basket</div>
+            <div class="chip" data-sport="tennis" onclick="loadSportEvents(this, 'tennis')">🎾 Tenis</div>
+            <div class="chip" data-sport="hockey" onclick="loadSportEvents(this, 'hockey')">🏒 Hockey</div>
+            <div class="chip" data-sport="football" onclick="loadSportEvents(this, 'football')">🏈 NFL</div>
+            <div class="chip" data-sport="baseball" onclick="loadSportEvents(this, 'baseball')">⚾ Baseball</div>
+            <div class="chip" data-sport="motorsport" onclick="loadSportEvents(this, 'motorsport')">🏎️ Motor</div>
+            <div class="chip" data-sport="cricket" onclick="loadSportEvents(this, 'cricket')">🏏 Cricket</div>
+            <div class="chip" data-sport="mma" onclick="loadSportEvents(this, 'mma')">🥊 MMA</div>
+        </div>
+        <div class="grid" id="events-grid"></div>
+    </div>
+
+</div>
+
+<!-- WORKFLOW MODAL -->
+<div class="modal-overlay" id="workflow-modal" onclick="if(event.target===this)this.classList.remove('show')">
+    <div class="modal">
+        <button class="close-btn" onclick="document.getElementById('workflow-modal').classList.remove('show')">&times;</button>
+        <h3>📋 Cómo obtener el stream M3U8</h3>
+        <div class="workflow-step">
+            <div class="num">1</div>
+            <div class="desc"><strong>Método automático (recomendado):</strong> Pulsa el botón <strong style="color:var(--green)">⚡ Auto M3U8</strong> en cualquier canal. El sistema abre la página, extrae el token y genera el enlace proxy automáticamente. Se copia al portapapeles.</div>
+        </div>
+        <div class="workflow-step">
+            <div class="num">2</div>
+            <div class="desc"><strong>Método manual:</strong> Abre el player → Refresh → Extrae el .m3u8 con DownloadHelper → Pégalo en el generador de arriba.</div>
+        </div>
+        <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:8px;font-size:12px;color:var(--text2);">
+            <strong style="color:var(--text);">ℹ️ Proxy:</strong> <code style="color:var(--green);">https://proxy-iptv-q1aa.onrender.com/stream?url=TU_M3U8</code>
+        </div>
+    </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+const API_BASE = 'https://api.cdnlivetv.tv/api/v1';
+const USER = 'cdnlivetv';
+const PLAN = 'free';
+const PROXY_BASE = 'https://proxy-iptv-q1aa.onrender.com/stream?url=';
+
+let allChannels = [];
+let currentFilter = 'spain';
+let currentStatus = 'all';
+let currentSort = '';
+let favorites = JSON.parse(localStorage.getItem('iptv-favs') || '[]');
+
+// === COUNTRY MAPS ===
+const COUNTRY_FLAGS = {
+    es: '🇪🇸', us: '🇺🇸', gb: '🇬🇧', it: '🇮🇹', de: '🇩🇪', fr: '🇫🇷', pt: '🇵🇹',
+    nl: '🇳🇱', au: '🇦🇺', nz: '🇳🇿', za: '🇿🇦', ca: '🇨🇦', br: '🇧🇷', ar: '🇦🇷',
+    mx: '🇲🇽', gr: '🇬🇷', dk: '🇩🇰', at: '🇦🇹', pl: '🇵🇱', ru: '🇷🇺', bg: '🇧🇬',
+    cy: '🇨🇾', rs: '🇷🇸', hr: '🇭🇷', be: '🇧🇪', cz: '🇨🇿', se: '🇸🇪', uy: '🇺🇾',
+    cl: '🇨🇱', co: '🇨🇴', ro: '🇷🇴', tr: '🇹🇷', il: '🇮🇱', eg: '🇪🇬', ae: '🇦🇪',
+    sa: '🇸🇦', in: '🇮🇳'
+};
+const COUNTRY_NAMES = {
+    es: 'España', us: 'USA', gb: 'UK', it: 'Italia', de: 'Alemania', fr: 'Francia', pt: 'Portugal',
+    nl: 'Países Bajos', au: 'Australia', nz: 'Nueva Zelanda', za: 'Sudáfrica', ca: 'Canadá',
+    br: 'Brasil', ar: 'Argentina', mx: 'México', gr: 'Grecia', dk: 'Dinamarca', at: 'Austria',
+    pl: 'Polonia', ru: 'Rusia', bg: 'Bulgaria', cy: 'Chipre', rs: 'Serbia', hr: 'Croacia',
+    be: 'Bélgica', cz: 'Chequia', se: 'Suecia', uy: 'Uruguay', cl: 'Chile', co: 'Colombia',
+    ro: 'Rumanía', tr: 'Turquía', il: 'Israel', eg: 'Egipto', ae: 'EAU', sa: 'Arabia Saudí', in: 'India'
+};
+
+// === PROVIDER DETECTION ===
+function getProvider(name) {
+    const n = name.toLowerCase();
+    if (n.includes('movistar') || n.startsWith('m ') || n.startsWith('m liga')) return { tag: 'Movistar', cls: 'tag-movistar' };
+    if (n.includes('dazn')) return { tag: 'DAZN', cls: 'tag-dazn' };
+    if (n.includes('laliga')) return { tag: 'LaLiga', cls: 'tag-laliga' };
+    if (n.includes('euro sport')) return { tag: 'Eurosport', cls: 'tag-euro' };
+    return null;
+}
+
+// === SPORT KEYWORD FILTERS ===
+const SPORT_KEYWORDS = {
+    futbol: ['laliga', 'liga', 'campeones', 'champions', 'deportes', 'football', 'soccer', 'premier league', 'gol play', 'vamos', 'calcio', 'bundesliga', 'fussball', 'futbol'],
+    f1: ['f1', 'formula', 'motogp', 'moto gp', 'motorsport'],
+    nba: ['nba', 'basketball', 'basket'],
+    tenis: ['tennis', 'tenis'],
+    champions: ['campeones', 'champions', 'liga de campeones'],
+    movistar: ['movistar', 'm laliga', 'm liga'],
+    dazn: ['dazn'],
+    laliga: ['laliga', 'm laliga']
+};
+
+// === FILTER LOGIC ===
+function matchesFilter(ch) {
+    const n = ch.name.toLowerCase();
+    const code = ch.code;
+
+    switch (currentFilter) {
+        case 'spain': return code === 'es';
+        case 'favorites': return favorites.includes(ch.name + '|' + ch.code);
+        case 'movistar': return SPORT_KEYWORDS.movistar.some(k => n.includes(k));
+        case 'dazn': return SPORT_KEYWORDS.dazn.some(k => n.includes(k));
+        case 'laliga': return SPORT_KEYWORDS.laliga.some(k => n.includes(k));
+        case 'champions': return SPORT_KEYWORDS.champions.some(k => n.includes(k));
+        case 'futbol': return SPORT_KEYWORDS.futbol.some(k => n.includes(k));
+        case 'f1': return SPORT_KEYWORDS.f1.some(k => n.includes(k));
+        case 'nba': return SPORT_KEYWORDS.nba.some(k => n.includes(k));
+        case 'tenis': return SPORT_KEYWORDS.tenis.some(k => n.includes(k));
+        case 'gb': return code === 'gb';
+        case 'it': return code === 'it';
+        case 'de': return code === 'de';
+        case 'fr': return code === 'fr';
+        case 'pt': return code === 'pt';
+        case 'us': return code === 'us';
+        case 'all': return true;
+        default: return true;
+    }
+}
+
+function matchesStatus(ch) {
+    if (currentStatus === 'all') return true;
+    return ch.status === currentStatus;
+}
+
+function matchesSearch(ch) {
+    const q = document.getElementById('search-input').value.toLowerCase().trim();
+    if (!q) return true;
+    return ch.name.toLowerCase().includes(q) || (COUNTRY_NAMES[ch.code] || '').toLowerCase().includes(q);
+}
+
+// === HEADINGS ===
+const FILTER_HEADINGS = {
+    spain: '🇪🇸 Canales de España',
+    favorites: '⭐ Mis Favoritos',
+    movistar: '📺 Movistar',
+    dazn: '📺 DAZN',
+    laliga: '⚽ LaLiga TV',
+    champions: '🏆 Liga de Campeones',
+    futbol: '⚽ Canales de Fútbol',
+    f1: '🏎️ Fórmula 1 / Motor',
+    nba: '🏀 NBA / Basketball',
+    tenis: '🎾 Tenis',
+    gb: '🇬🇧 Canales de UK',
+    it: '🇮🇹 Canales de Italia',
+    de: '🇩🇪 Canales de Alemania',
+    fr: '🇫🇷 Canales de Francia',
+    pt: '🇵🇹 Canales de Portugal',
+    us: '🇺🇸 Canales de USA',
+    all: '🌍 Todos los Canales'
+};
+
+// === RENDERING ===
+function renderChannels() {
+    const grid = document.getElementById('channels-grid');
+
+    let filtered = allChannels.filter(ch => matchesFilter(ch) && matchesStatus(ch) && matchesSearch(ch));
+
+    // Sort
+    if (currentSort === 'name') {
+        filtered.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (currentSort === 'viewers') {
+        filtered.sort((a, b) => (b.viewers || 0) - (a.viewers || 0));
+    } else {
+        // Default: online first, then by viewers
+        filtered.sort((a, b) => {
+            if (a.status === 'online' && b.status !== 'online') return -1;
+            if (b.status === 'online' && a.status !== 'online') return 1;
+            return (b.viewers || 0) - (a.viewers || 0);
+        });
+    }
+
+    // Dedup by name+code (API sometimes has duplicates)
+    const seen = new Set();
+    filtered = filtered.filter(ch => {
+        const key = ch.name + '|' + ch.code;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+
+    const heading = FILTER_HEADINGS[currentFilter] || 'Canales';
+    document.getElementById('section-heading').innerHTML = `${heading} <span class="count" id="channel-count">(${filtered.length})</span>`;
+
+    if (filtered.length === 0) {
+        grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="icon">📺</div><p>No se encontraron canales con estos filtros</p></div>`;
+        return;
+    }
+
+    grid.innerHTML = filtered.map(ch => {
+        const flag = COUNTRY_FLAGS[ch.code] || '🌐';
+        const country = COUNTRY_NAMES[ch.code] || ch.code;
+        const provider = getProvider(ch.name);
+        const isFav = favorites.includes(ch.name + '|' + ch.code);
+        const safeName = ch.name.replace(/'/g, "\\'");
+        const safeUrl = ch.url ? ch.url.replace(/'/g, "\\'") : '';
+
+        return `<div class="card">
+            <div class="card-img">
+                ${ch.image ? `<img src="${ch.image}" onerror="this.parentElement.innerHTML='<div class=placeholder>📺</div>'" alt="${ch.name}">` : '<div class="placeholder">📺</div>'}
+                <span class="card-status ${ch.status === 'online' ? 'status-online' : 'status-offline'}">${ch.status}</span>
+                <button class="card-fav ${isFav ? 'fav' : ''}" onclick="toggleFav('${safeName}','${ch.code}',this)" title="Favorito">★</button>
+            </div>
+            <div class="card-body">
+                <h3 title="${ch.name}">${ch.name}</h3>
+                <div class="card-meta">
+                    <span class="country-badge">${flag} ${country}</span>
+                    <span>
+                        ${provider ? `<span class="provider-tag ${provider.cls}">${provider.tag}</span>` : ''}
+                        ${ch.viewers > 0 ? `<span class="viewers">👀 ${ch.viewers}</span>` : ''}
+                    </span>
+                </div>
+                <div class="card-actions">
+                    <button class="btn-auto" onclick="autoExtract('${safeName}','${ch.code}',this)" title="Extraer M3U8 automáticamente">⚡ Auto M3U8</button>
+                    <button class="btn-open" onclick="window.open('${safeUrl}','_blank')">▶ Player</button>
+                    <button class="btn-copy" onclick="copyUrl('${safeUrl}')">📋</button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// === LOAD DATA ===
+async function loadAllChannels() {
+    const grid = document.getElementById('channels-grid');
+    grid.innerHTML = '<div class="loading" style="grid-column:1/-1"><div class="spinner"></div>Cargando canales...</div>';
+
+    try {
+        // Try local proxy first, then direct API
+        let data;
+        try {
+            const res = await fetch(`/api/channels`);
+            data = await res.json();
+        } catch (_) {
+            const res = await fetch(`${API_BASE}/channels/?user=${USER}&plan=${PLAN}`);
+            data = await res.json();
+        }
+        allChannels = data.channels || [];
+        console.log(`[Dashboard] Loaded ${allChannels.length} channels`);
+        if (allChannels.length === 0) {
+            grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="icon">📺</div><p>La API devolvió 0 canales. <button onclick="loadAllChannels()" style="color:var(--accent);background:none;border:none;cursor:pointer;text-decoration:underline;">Reintentar</button></p></div>';
+            return;
+        }
+        updateStats();
+        renderChannels();
+    } catch (e) {
+        console.error('[Dashboard] Error loading channels:', e);
+        grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="icon">⚠️</div><p>Error: ${e.message}. <button onclick="loadAllChannels()" style="color:var(--accent);background:none;border:none;cursor:pointer;text-decoration:underline;">Reintentar</button></p></div>`;
+    }
+}
+
+function updateStats() {
+    document.getElementById('stat-total').textContent = allChannels.length;
+    document.getElementById('stat-online').textContent = allChannels.filter(c => c.status === 'online').length;
+    document.getElementById('stat-es').textContent = allChannels.filter(c => c.code === 'es').length;
+    document.getElementById('stat-favs').textContent = favorites.length;
+}
+
+// === FILTER HANDLERS ===
+function setMainFilter(el) {
+    document.querySelectorAll('#main-filters .chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    currentFilter = el.dataset.filter;
+
+    if (currentFilter === 'events') {
+        document.getElementById('tab-channels').classList.remove('active');
+        document.getElementById('tab-events').classList.add('active');
+        loadSportEvents(document.querySelector('#sport-filters .chip.active'), document.querySelector('#sport-filters .chip.active')?.dataset.sport || 'soccer');
+    } else {
+        document.getElementById('tab-events').classList.remove('active');
+        document.getElementById('tab-channels').classList.add('active');
+        renderChannels();
+    }
+}
+
+function setStatusFilter(el) {
+    document.querySelectorAll('.sub-filters .sub-chip[data-status]').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    currentStatus = el.dataset.status;
+    renderChannels();
+}
+
+function setSortFilter(el) {
+    const wasActive = el.classList.contains('active');
+    document.querySelectorAll('.sub-filters .sub-chip[data-sort]').forEach(c => c.classList.remove('active'));
+    if (!wasActive) {
+        el.classList.add('active');
+        currentSort = el.dataset.sort;
+    } else {
+        currentSort = '';
+    }
+    renderChannels();
+}
+
+function applyFilters() {
+    renderChannels();
+}
+
+function setView(type, btn) {
+    const grid = document.getElementById('channels-grid');
+    document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (type === 'compact') {
+        grid.classList.add('compact');
+    } else {
+        grid.classList.remove('compact');
+    }
+}
+
+// === FAVORITES ===
+function toggleFav(name, code, btn) {
+    const key = name + '|' + code;
+    const idx = favorites.indexOf(key);
+    if (idx >= 0) {
+        favorites.splice(idx, 1);
+        btn.classList.remove('fav');
+    } else {
+        favorites.push(key);
+        btn.classList.add('fav');
+    }
+    localStorage.setItem('iptv-favs', JSON.stringify(favorites));
+    updateStats();
+    if (currentFilter === 'favorites') renderChannels();
+}
+
+// === M3U8 PROXY TOOL ===
+function generateProxyUrl() {
+    const m3u8 = document.getElementById('m3u8-input').value.trim();
+    if (!m3u8) {
+        showToast('Pega una URL .m3u8 primero');
+        return;
+    }
+    const proxyUrl = PROXY_BASE + m3u8;
+
+    document.getElementById('proxy-result').textContent = proxyUrl;
+    document.getElementById('result-box').classList.add('visible');
+    showToast('Enlace proxy generado');
+}
+
+function copyResult() {
+    const url = document.getElementById('proxy-result').textContent;
+    navigator.clipboard.writeText(url).then(() => showToast('Enlace copiado al portapapeles'));
+}
+
+function openInVLC() {
+    const url = document.getElementById('proxy-result').textContent;
+    window.open('vlc://' + url, '_self');
+}
+
+function copyUrl(url) {
+    navigator.clipboard.writeText(url).then(() => showToast('URL del player copiada'));
+}
+
+// === EVENTS ===
+async function loadSportEvents(btn, sport) {
+    document.querySelectorAll('#sport-filters .chip').forEach(c => c.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+
+    const grid = document.getElementById('events-grid');
+    grid.innerHTML = '<div class="loading" style="grid-column:1/-1"><div class="spinner"></div>Buscando eventos...</div>';
+
+    // Map sport names to API paths
+    const sportMap = {
+        soccer: 'Soccer', basketball: 'Basketball', tennis: 'Tennis',
+        hockey: 'Hockey', football: 'Football', baseball: 'Baseball',
+        motorsport: 'Motorsport', cricket: 'Cricket', mma: 'MMA'
+    };
+
+    try {
+        const res = await fetch(`${API_BASE}/events/sports/${(sportMap[sport] || sport).toLowerCase()}/?user=${USER}&plan=${PLAN}`);
+        const data = await res.json();
+        const sportKey = sportMap[sport] || sport;
+        const events = data['cdnlivetv.tv']?.[sportKey] || [];
+
+        if (!events.length) {
+            grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="icon">📡</div><p>No hay eventos en vivo de este deporte ahora mismo</p></div>';
+            return;
+        }
+
+        grid.innerHTML = events.map(ev => {
+            const isLive = ev.status === 'live';
+            const channelBtns = (ev.channels || []).map(ch => {
+                const safeChUrl = ch.url ? ch.url.replace(/'/g, "\\'") : '';
+                return `<button class="event-ch-btn" onclick="window.open('${safeChUrl}','_blank')" title="${ch.channel_name}">📺 ${ch.channel_name}</button>`;
+            }).join('');
+
+            return `<div class="event-card">
+                <div class="event-header">
+                    <span class="tournament">${ev.tournament || ''}</span>
+                    <span class="time ${isLive ? 'event-live' : ''}">${isLive ? '🔴 LIVE' : ev.time || ''}</span>
+                </div>
+                <div class="event-teams">
+                    <div style="text-align:center">
+                        <img src="${ev.homeTeamIMG || ''}" onerror="this.style.display='none'" alt="">
+                        <div class="team-name">${ev.homeTeam || '?'}</div>
+                    </div>
+                    <span class="vs">VS</span>
+                    <div style="text-align:center">
+                        <img src="${ev.awayTeamIMG || ''}" onerror="this.style.display='none'" alt="">
+                        <div class="team-name">${ev.awayTeam || '?'}</div>
+                    </div>
+                </div>
+                <div class="event-channels">${channelBtns}</div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="icon">⚠️</div><p>Error al cargar eventos</p></div>';
+    }
+}
+
+// === UTILITY ===
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function showWorkflow() {
+    document.getElementById('workflow-modal').classList.add('show');
+}
+
+function refreshAll() {
+    loadAllChannels();
+    showToast('Actualizando canales...');
+}
+
+// === AUTO EXTRACT M3U8 ===
+async function autoExtract(name, code, btn) {
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.classList.add('extracting');
+    btn.textContent = '⏳ Extrayendo...';
+    showToast(`Extrayendo token de ${name}...`);
+
+    try {
+        const res = await fetch('/api/extract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, code })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            // Show in the M3U8 tool panel
+            document.getElementById('m3u8-input').value = data.m3u8Url;
+            document.getElementById('proxy-result').textContent = data.proxyUrl;
+            document.getElementById('result-box').classList.add('visible');
+            
+            // Copy proxy URL to clipboard
+            await navigator.clipboard.writeText(data.proxyUrl);
+            
+            btn.textContent = '✅ Listo!';
+            btn.style.background = 'var(--green)';
+            showToast(`✅ M3U8 extraído y copiado (${data.elapsed})`);
+            
+            // Scroll to result
+            document.getElementById('tool-panel').scrollIntoView({ behavior: 'smooth' });
+        } else {
+            btn.textContent = '❌ Error';
+            btn.style.background = 'var(--accent)';
+            showToast(`❌ Error: ${data.error}`);
+        }
+    } catch (err) {
+        btn.textContent = '❌ Error';
+        btn.style.background = 'var(--accent)';
+        showToast(`❌ Error de conexión. ¿Está el servidor corriendo en localhost:3000?`);
+    }
+
+    setTimeout(() => {
+        btn.textContent = originalText;
+        btn.disabled = false;
+        btn.classList.remove('extracting');
+        btn.style.background = '';
+    }, 3000);
+}
+
+// === KEYBOARD SHORTCUT ===
+document.addEventListener('keydown', e => {
+    if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+        e.preventDefault();
+        document.getElementById('search-input').focus();
+    }
+    if (e.key === 'Escape') {
+        document.getElementById('workflow-modal').classList.remove('show');
+    }
+});
+
+// === INIT ===
+loadAllChannels();
+</script>
+</body>
+</html>

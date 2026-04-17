@@ -1,0 +1,8 @@
+node_modules/
+*.har
+*.bat
+*.pyc
+__pycache__/
+dashboard_backup.html
+instrucciones_chat.txt
+.env

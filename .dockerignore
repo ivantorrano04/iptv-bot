@@ -1,0 +1,9 @@
+node_modules
+.git
+*.har
+*.bat
+*.md
+dashboard_backup.html
+__pycache__
+*.pyc
+actualizador_iptv.py
