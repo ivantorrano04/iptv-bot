@@ -1,0 +1,1 @@
+web: gunicorn proxy_iptv:app
