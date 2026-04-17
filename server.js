@@ -41,7 +41,7 @@ app.post('/api/extract', async (req, res) => {
       res.json({
         success: true,
         m3u8Url: result.m3u8Url,
-        proxyUrl: `https://proxy-iptv-q1aa.onrender.com/stream?url=${result.m3u8Url}`,
+        proxyUrl: `/stream?url=${result.m3u8Url}`,
         method: result.method,
         elapsed: `${elapsed}s`
       });
@@ -74,7 +74,7 @@ app.post('/api/extract-batch', async (req, res) => {
         code: ch.code,
         ...result,
         proxyUrl: result.success
-          ? `https://proxy-iptv-q1aa.onrender.com/stream?url=${result.m3u8Url}`
+          ? `/stream?url=${result.m3u8Url}`
           : null
       });
     } catch (err) {
@@ -110,7 +110,10 @@ app.get('/play/:code/:name', async (req, res) => {
     const elapsed = ((Date.now() - start) / 1000).toFixed(1);
 
     if (result.success) {
-      const proxyUrl = `https://proxy-iptv-q1aa.onrender.com/stream?url=${result.m3u8Url}`;
+      // Build absolute proxy URL using same host
+      const proto = req.protocol;
+      const host = req.get('host');
+      const proxyUrl = `${proto}://${host}/stream?url=${result.m3u8Url}`;
       // Cache it
       tokenCache.set(cacheKey, { proxyUrl, time: Date.now() });
       console.log(`[PLAY] OK (${elapsed}s) — redirecting to proxy`);
@@ -156,6 +159,57 @@ app.get('/playlist.m3u8', (req, res) => {
 
   res.set('Content-Type', 'application/x-mpegURL');
   res.send(m3u);
+});
+
+// === Stream proxy (replaces the separate Flask proxy) ===
+app.get('/stream', async (req, res) => {
+  // Get the full URL after ?url= (preserving & in the token)
+  const urlParam = req.url.split('url=')[1];
+  if (!urlParam) {
+    return res.status(400).send('Missing url parameter');
+  }
+
+  console.log(`[STREAM] Proxying: ${urlParam.substring(0, 80)}...`);
+
+  try {
+    const upstream = await fetch(urlParam, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://cdnlivetv.tv/',
+        'Accept': '*/*',
+        'Connection': 'keep-alive'
+      }
+    });
+
+    if (!upstream.ok) {
+      console.log(`[STREAM] Upstream error: ${upstream.status}`);
+      return res.status(upstream.status).send(`Upstream error ${upstream.status}`);
+    }
+
+    // Forward content-type
+    const ct = upstream.headers.get('content-type');
+    if (ct) res.set('Content-Type', ct);
+
+    // Pipe the stream
+    const reader = upstream.body.getReader();
+    const pump = async () => {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!res.writableEnded) res.write(Buffer.from(value));
+      }
+      if (!res.writableEnded) res.end();
+    };
+    pump().catch(() => { try { res.end(); } catch(_) {} });
+
+    req.on('close', () => {
+      try { reader.cancel(); } catch(_) {}
+    });
+
+  } catch (err) {
+    console.error(`[STREAM] Error: ${err.message}`);
+    if (!res.headersSent) res.status(500).send('Stream proxy error');
+  }
 });
 
 // === Health check (used by keep-alive and monitoring) ===
