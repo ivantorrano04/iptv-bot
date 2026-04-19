@@ -1,9 +1,5 @@
 # Lista de canales IPTV
-# Formato: nombre_canal,codigo_pais,grupo (opcional)
-# El nombre y código deben coincidir con cdnlivetv.tv
-# Ejemplo: DAZN LaLiga,es,Deportes
-#
-# Grupos disponibles: Deportes, Futbol, Motor, Cine, General
+# Formato: nombre_canal,codigo_pais,grupo
 #
 DAZN LaLiga,es,Futbol
 DAZN 3,es,Deportes
