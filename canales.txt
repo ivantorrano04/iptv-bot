@@ -1,9 +1,69 @@
-# Lista de canales IPTV
+# Lista de canales IPTV España
 # Formato: nombre_canal,codigo_pais,grupo
 #
+# === FUTBOL ===
 DAZN LaLiga,es,Futbol
-DAZN 3,es,Deportes
-DAZN F1,es,Motor
+DAZN LaLiga 2,es,Futbol
 M LALIGA,es,Futbol
+M LALIGA 2,es,Futbol
+Gol Play,es,Futbol
+LaLiga TV Hypermotion 1,es,Futbol
+LaLiga TV Hypermotion 2,es,Futbol
+LaLiga TV Hypermotion 3,es,Futbol
+LaLiga TV Hypermotion 4,es,Futbol
+LaLiga TV Hypermotion 5,es,Futbol
+LaLiga TV Hypermotion 6,es,Futbol
+LaLiga TV Hypermotion 7,es,Futbol
+LaLiga TV Hypermotion 8,es,Futbol
+LaLiga TV Hypermotion 9,es,Futbol
+LaLiga TV Hypermotion 10,es,Futbol
+LaLiga TV Hypermotion 11,es,Futbol
+#
+# === CHAMPIONS ===
+M Liga de Campeones 1,es,Champions
+M Liga de Campeones 2,es,Champions
+M Liga de Campeones 3,es,Champions
+M Liga de Campeones 4,es,Champions
+M Liga de Campeones 5,es,Champions
+M Liga de Campeones 6,es,Champions
+M Liga de Campeones 7,es,Champions
+M Liga de Campeones 8,es,Champions
+M Liga de Campeones 9,es,Champions
+M Liga de Campeones 10,es,Champions
+M Liga de Campeones 11,es,Champions
+M Liga de Campeones 12,es,Champions
+M Liga de Campeones 13,es,Champions
+M Liga de Campeones 14,es,Champions
+M Liga de Campeones 15,es,Champions
+M Liga de Campeones 16,es,Champions
+M Liga de Campeones 17,es,Champions
+#
+# === DEPORTES ===
+DAZN 1,es,Deportes
+DAZN 2,es,Deportes
+DAZN 3,es,Deportes
+DAZN 4,es,Deportes
 Movistar Deportes 1,es,Deportes
 Movistar Deportes 2,es,Deportes
+Movistar Deportes 3,es,Deportes
+Movistar Deportes 4,es,Deportes
+beIN SPORTS N,es,Deportes
+beIN SPORTS XTRA,es,Deportes
+Euro Sport 1,es,Deportes
+Euro Sport 2,es,Deportes
+Vamos Spain,es,Deportes
+Teledeporte,es,Deportes
+#
+# === MOTOR ===
+DAZN F1,es,Motor
+#
+# === GOLF ===
+Movistar Golf,es,Golf
+#
+# === TV CLUBS ===
+Barca TV,es,Clubs
+Real Madrid TV,es,Clubs
+#
+# === TV GENERAL ===
+TVE La 1,es,TV
+TVE La 2,es,TV

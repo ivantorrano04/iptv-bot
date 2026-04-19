@@ -1,0 +1,24 @@
+#EXTM3U
+#
+#    /$$$$$$  /$$$$$$$  /$$   /$$       /$$       /$$                           /$$$$$$$$ /$$    /$$
+#   /$$__  $$| $$__  $$| $$$ | $$      | $$      |__/                          |__  $$__/| $$   | $$
+#  | $$  \__/| $$  \ $$| $$$$| $$      | $$       /$$ /$$    /$$ /$$$$$$          | $$   | $$   | $$
+#  | $$      | $$  | $$| $$ $$ $$      | $$      | $$|  $$  /$$//$$__  $$         | $$   |  $$ / $$/
+#  | $$      | $$  | $$| $$  $$$$      | $$      | $$ \  $$/$$/| $$$$$$$$         | $$    \  $$ $$/
+#  | $$    $$| $$  | $$| $$\  $$$      | $$      | $$  \  $$$/ | $$_____/         | $$     \  $$$/
+#  |  $$$$$$/| $$$$$$$/| $$ \  $$      | $$$$$$$$| $$   \  $/  |  $$$$$$$         | $$      \  $/
+#   \______/ |_______/ |__/  \__/      |________/|__/    \_/    \_______/         |__/       \_/
+#
+#                                         cdn-live.tv
+#EXT-X-TARGETDURATION:7
+#EXT-X-VERSION:3
+#EXT-X-MEDIA-SEQUENCE:20349
+#EXT-X-PROGRAM-DATE-TIME:2026-04-19T17:59:03.878Z
+#EXTINF:6.000,
+https://iptv-bot-kk5s.onrender.com/stream?url=https://edge.cdn-aws.ru/secure/api/v1/es-dazn-f1/MjAyNi8wNC8xOS8xNy81OS8wMy0wNjAwMA.ts?token=417648f92e4de0f6c73a6505f4d82550736ca91cf087b292da15633b80430041.1776621501.ed988e255130788798a153c333c2282b.fac9eb937f085face8abbbaa007ffa55.0a327909fc4702e900be6d78cbcc46cf&signature=e79004758118b81970328651277c920bbf96a45281237fec7794939cf930e917
+#EXTINF:6.200,
+https://iptv-bot-kk5s.onrender.com/stream?url=https://edge.cdn-aws.ru/secure/api/v1/es-dazn-f1/MjAyNi8wNC8xOS8xNy81OS8wOS0wNjIwMA.ts?token=417648f92e4de0f6c73a6505f4d82550736ca91cf087b292da15633b80430041.1776621501.ed988e255130788798a153c333c2282b.fac9eb937f085face8abbbaa007ffa55.0a327909fc4702e900be6d78cbcc46cf&signature=e79004758118b81970328651277c920bbf96a45281237fec7794939cf930e917
+#EXTINF:5.800,
+https://iptv-bot-kk5s.onrender.com/stream?url=https://edge.cdn-aws.ru/secure/api/v1/es-dazn-f1/MjAyNi8wNC8xOS8xNy81OS8xNi0wNTgwMA.ts?token=417648f92e4de0f6c73a6505f4d82550736ca91cf087b292da15633b80430041.1776621501.ed988e255130788798a153c333c2282b.fac9eb937f085face8abbbaa007ffa55.0a327909fc4702e900be6d78cbcc46cf&signature=e79004758118b81970328651277c920bbf96a45281237fec7794939cf930e917
+#EXTINF:5.920,
+https://iptv-bot-kk5s.onrender.com/stream?url=https://edge.cdn-aws.ru/secure/api/v1/es-dazn-f1/MjAyNi8wNC8xOS8xNy81OS8yMS0wNTkyMA.ts?token=417648f92e4de0f6c73a6505f4d82550736ca91cf087b292da15633b80430041.1776621501.ed988e255130788798a153c333c2282b.fac9eb937f085face8abbbaa007ffa55.0a327909fc4702e900be6d78cbcc46cf&signature=e79004758118b81970328651277c920bbf96a45281237fec7794939cf930e917
