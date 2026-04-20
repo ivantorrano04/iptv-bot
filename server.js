@@ -7,6 +7,40 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// === Rate limiting (protect against abuse & platform bans) ===
+const rateLimits = new Map();
+const RATE_WINDOW = 60 * 1000; // 1 minute window
+const MAX_REQUESTS_PER_WINDOW = 60; // 60 req/min per IP
+const MAX_EXTRACT_PER_WINDOW = 10; // 10 extractions/min per IP
+
+function rateLimit(key, max) {
+  const now = Date.now();
+  const entry = rateLimits.get(key);
+  if (!entry || now - entry.start > RATE_WINDOW) {
+    rateLimits.set(key, { start: now, count: 1 });
+    return false;
+  }
+  entry.count++;
+  return entry.count > max;
+}
+
+// Clean up rate limit entries every 5 min
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimits) {
+    if (now - entry.start > RATE_WINDOW * 2) rateLimits.delete(key);
+  }
+}, 5 * 60 * 1000);
+
+// Global rate limit middleware
+app.use((req, res, next) => {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip;
+  if (rateLimit(`global:${ip}`, MAX_REQUESTS_PER_WINDOW)) {
+    return res.status(429).json({ error: 'Too many requests. Try again in a minute.' });
+  }
+  next();
+});
+
 // Serve dashboard
 app.use(express.static(path.join(__dirname)));
 
@@ -30,6 +64,13 @@ app.post('/api/extract', async (req, res) => {
   }
 
   console.log(`\n[API] Extract request: name="${name}", code="${code}"`);
+
+  // Rate limit extractions (expensive operation)
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip;
+  if (rateLimit(`extract:${ip}`, MAX_EXTRACT_PER_WINDOW)) {
+    return res.status(429).json({ error: 'Too many extraction requests. Try again in a minute.' });
+  }
+
   const start = Date.now();
 
   try {
@@ -402,7 +443,7 @@ async function refreshAllTokens() {
   if (!canales.length) return;
   console.log(`\n[CRON] Refreshing tokens for ${canales.length} channels...`);
   let ok = 0, fail = 0;
-  const CONCURRENCY = 4;
+  const CONCURRENCY = 3;
 
   for (let i = 0; i < canales.length; i += CONCURRENCY) {
     const batch = canales.slice(i, i + CONCURRENCY);
@@ -424,22 +465,16 @@ async function refreshAllTokens() {
       })
     );
     results.forEach(r => r.status === 'fulfilled' && r.value ? ok++ : fail++);
+    // Stagger batches to avoid request spikes
+    if (i + CONCURRENCY < canales.length) await new Promise(r => setTimeout(r, 3000));
   }
   console.log(`[CRON] Done: ${ok} OK, ${fail} failed (cache size: ${tokenCache.size})`);
 }
 
-// Refresh tokens every 3 hours
+// Refresh tokens every 4 hours (aligned with cache TTL, less aggressive)
 setInterval(async () => {
   await refreshAllTokens();
-}, 3 * 60 * 60 * 1000);
-
-// === Keep-alive: ping ourselves every 14 min to prevent Render from sleeping ===
-const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
-if (RENDER_URL) {
-  setInterval(() => {
-    fetch(`${RENDER_URL}/health`).catch(() => {});
-  }, 14 * 60 * 1000);
-}
+}, 4 * 60 * 60 * 1000);
 
 // Cleanup on shutdown
 process.on('SIGINT', async () => {
@@ -447,18 +482,26 @@ process.on('SIGINT', async () => {
   await closeBrowser();
   process.exit(0);
 });
+process.on('SIGTERM', async () => {
+  console.log('\nSIGTERM received, shutting down...');
+  await closeBrowser();
+  process.exit(0);
+});
 
 const PORT = process.env.PORT || 3000;
+const PUBLIC_URL = process.env.RAILWAY_PUBLIC_DOMAIN
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+  : process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+
 app.listen(PORT, async () => {
-  const host = RENDER_URL || `http://localhost:${PORT}`;
   console.log(`\n  IPTV Token Extractor running on http://localhost:${PORT}`);
   console.log(`  Dashboard: http://localhost:${PORT}/dashboard.html`);
-  if (RENDER_URL) console.log(`  Cloud URL: ${RENDER_URL}`);
+  console.log(`  Public URL: ${PUBLIC_URL}`);
   console.log('');
 
   // Upload M3U8 to Gist on startup (static /play URLs)
-  await updateGist(host);
+  await updateGist(PUBLIC_URL);
 
-  // Pre-warm token cache in background (don't block startup)
-  setTimeout(() => refreshAllTokens(), 5000);
+  // Pre-warm token cache in background (staggered start, don't blast requests)
+  setTimeout(() => refreshAllTokens(), 10000);
 });

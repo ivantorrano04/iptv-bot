@@ -6,3 +6,7 @@ __pycache__/
 dashboard_backup.html
 instrucciones_chat.txt
 .env
+daddy_*
+test_*
+m3u-playlist-proxy*
+*.zip
