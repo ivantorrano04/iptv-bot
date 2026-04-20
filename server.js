@@ -33,20 +33,22 @@ app.post('/api/extract', async (req, res) => {
   const start = Date.now();
 
   try {
-    const result = await extractToken(name, code);
+    const token = await getTokenForChannel(code, name);
     const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-    console.log(`[API] Result (${elapsed}s): ${result.success ? 'OK' : 'FAIL'}`);
 
-    if (result.success) {
+    if (token.error) {
+      console.log(`[API] FAIL (${elapsed}s): ${token.error}`);
+      res.json({ success: false, error: token.error, elapsed: `${elapsed}s` });
+    } else {
+      console.log(`[API] OK (${elapsed}s) ${token.fromCache ? '(cache)' : '(fresh)'}`);
       res.json({
         success: true,
-        m3u8Url: result.m3u8Url,
-        proxyUrl: `/stream?url=${result.m3u8Url}`,
-        method: result.method,
+        m3u8Url: token.m3u8Url,
+        proxyUrl: `/stream?url=${token.m3u8Url}`,
+        method: token.method || 'cached',
+        fromCache: token.fromCache,
         elapsed: `${elapsed}s`
       });
-    } else {
-      res.json({ success: false, error: result.error, debug: result.debug || null, elapsed: `${elapsed}s` });
     }
   } catch (err) {
     console.error('[API] Error:', err.message);
@@ -68,14 +70,15 @@ app.post('/api/extract-batch', async (req, res) => {
   const results = [];
   for (const ch of batch) {
     try {
-      const result = await extractToken(ch.name, ch.code);
+      const token = await getTokenForChannel(ch.code, ch.name);
       results.push({
         name: ch.name,
         code: ch.code,
-        ...result,
-        proxyUrl: result.success
-          ? `/stream?url=${result.m3u8Url}`
-          : null
+        success: !token.error,
+        m3u8Url: token.m3u8Url,
+        error: token.error,
+        fromCache: token.fromCache,
+        proxyUrl: token.m3u8Url ? `/stream?url=${token.m3u8Url}` : null
       });
     } catch (err) {
       results.push({ name: ch.name, code: ch.code, success: false, error: err.message });
@@ -86,19 +89,60 @@ app.post('/api/extract-batch', async (req, res) => {
 });
 
 // === IPTV Player endpoint — M3UIPTV/Kodi calls this URL ===
-// Proxies HLS directly (no redirect) — extracts token on demand per channel switch
+// Smart token cache: reuse tokens until they actually expire (verified via HEAD request)
 const tokenCache = new Map();
-const CACHE_TTL = 3 * 60 * 60 * 1000; // 3 hours
+const CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours max TTL
+const CACHE_VERIFY_INTERVAL = 5 * 60 * 1000; // Re-verify with HEAD every 5 min
 
-async function getTokenForChannel(code, name) {
+async function verifyToken(m3u8Url) {
+  try {
+    const resp = await fetch(m3u8Url, {
+      method: 'HEAD',
+      headers: UPSTREAM_HEADERS,
+      signal: AbortSignal.timeout(5000)
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function getTokenForChannel(code, name, { forceRefresh = false } = {}) {
   const cacheKey = `${code}:${name}`;
   const cached = tokenCache.get(cacheKey);
-  if (cached && (Date.now() - cached.time) < CACHE_TTL) {
-    return { m3u8Url: cached.m3u8Url, fromCache: true };
+
+  if (cached && !forceRefresh) {
+    const age = Date.now() - cached.time;
+
+    // Within max TTL
+    if (age < CACHE_TTL) {
+      // If recently verified, serve directly
+      if (Date.now() - cached.lastVerified < CACHE_VERIFY_INTERVAL) {
+        cached.hits = (cached.hits || 0) + 1;
+        return { m3u8Url: cached.m3u8Url, fromCache: true };
+      }
+
+      // Otherwise do a quick HEAD to verify it's still alive
+      const alive = await verifyToken(cached.m3u8Url);
+      if (alive) {
+        cached.lastVerified = Date.now();
+        cached.hits = (cached.hits || 0) + 1;
+        return { m3u8Url: cached.m3u8Url, fromCache: true };
+      }
+      console.log(`[CACHE] Token expired for ${name}, re-extracting...`);
+    }
   }
+
+  // Extract fresh token
   const result = await extractToken(name, code);
   if (result.success) {
-    tokenCache.set(cacheKey, { m3u8Url: result.m3u8Url, time: Date.now() });
+    tokenCache.set(cacheKey, {
+      m3u8Url: result.m3u8Url,
+      time: Date.now(),
+      lastVerified: Date.now(),
+      hits: 0,
+      method: result.method
+    });
     return { m3u8Url: result.m3u8Url, fromCache: false, method: result.method };
   }
   return { error: result.error };
@@ -140,10 +184,11 @@ const UPSTREAM_HEADERS = {
 
 app.get('/play/:code/:name', async (req, res) => {
   const { code, name } = req.params;
-  console.log(`\n[PLAY] ${name} (${code})`);
+  const decodedName = decodeURIComponent(name);
+  console.log(`\n[PLAY] ${decodedName} (${code})`);
 
   try {
-    let token = await getTokenForChannel(code, name);
+    let token = await getTokenForChannel(code, decodedName);
     if (token.error) {
       console.log(`[PLAY] FAIL: ${token.error}`);
       return res.status(503).type('text/plain').send(`# Error: ${token.error}`);
@@ -153,13 +198,21 @@ app.get('/play/:code/:name', async (req, res) => {
     // Fetch upstream m3u8
     let upstream = await fetch(token.m3u8Url, { headers: UPSTREAM_HEADERS });
 
-    // If 403/401, token expired — extract fresh
+    // If 403/401, token expired — extract fresh (max 2 retries)
     if (upstream.status === 403 || upstream.status === 401) {
       console.log(`[PLAY] Token expired (${upstream.status}), re-extracting...`);
-      tokenCache.delete(`${code}:${name}`);
-      token = await getTokenForChannel(code, name);
+      token = await getTokenForChannel(code, decodedName, { forceRefresh: true });
       if (token.error) return res.status(503).type('text/plain').send(`# Error: ${token.error}`);
       upstream = await fetch(token.m3u8Url, { headers: UPSTREAM_HEADERS });
+
+      // Second retry if still failing
+      if (upstream.status === 403 || upstream.status === 401) {
+        console.log(`[PLAY] Second attempt also expired, final retry...`);
+        await new Promise(r => setTimeout(r, 2000));
+        token = await getTokenForChannel(code, decodedName, { forceRefresh: true });
+        if (token.error) return res.status(503).type('text/plain').send(`# Error: ${token.error}`);
+        upstream = await fetch(token.m3u8Url, { headers: UPSTREAM_HEADERS });
+      }
     }
 
     if (!upstream.ok) {
@@ -268,6 +321,34 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime(), cache: tokenCache.size });
 });
 
+// === Cache stats API — dashboard uses this ===
+app.get('/api/cache-stats', (req, res) => {
+  const stats = [];
+  const now = Date.now();
+  for (const [key, entry] of tokenCache) {
+    const [code, ...nameParts] = key.split(':');
+    const name = nameParts.join(':');
+    const age = now - entry.time;
+    const ttlRemaining = Math.max(0, CACHE_TTL - age);
+    stats.push({
+      name,
+      code,
+      age: Math.round(age / 1000),
+      ttlRemaining: Math.round(ttlRemaining / 1000),
+      hits: entry.hits || 0,
+      method: entry.method || 'unknown',
+      lastVerified: Math.round((now - entry.lastVerified) / 1000),
+      alive: ttlRemaining > 0
+    });
+  }
+  stats.sort((a, b) => b.ttlRemaining - a.ttlRemaining);
+  res.json({
+    total: stats.length,
+    uptime: Math.round(process.uptime()),
+    stats
+  });
+});
+
 // === Auto-refresh: cron every 3 hours + Gist update on startup ===
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GIST_ID = process.env.GIST_ID || '8028547c786162756e9f5b9ced06c3df';
@@ -321,22 +402,30 @@ async function refreshAllTokens() {
   if (!canales.length) return;
   console.log(`\n[CRON] Refreshing tokens for ${canales.length} channels...`);
   let ok = 0, fail = 0;
-  for (const ch of canales) {
-    try {
-      const result = await getTokenForChannel(ch.code, ch.name);
-      if (result.error) {
-        console.log(`[CRON] FAIL ${ch.name}: ${result.error}`);
-        fail++;
-      } else {
-        console.log(`[CRON] OK ${ch.name} ${result.fromCache ? '(cache)' : '(fresh)'}`);
-        ok++;
-      }
-    } catch (e) {
-      console.log(`[CRON] ERROR ${ch.name}: ${e.message}`);
-      fail++;
-    }
+  const CONCURRENCY = 4;
+
+  for (let i = 0; i < canales.length; i += CONCURRENCY) {
+    const batch = canales.slice(i, i + CONCURRENCY);
+    const results = await Promise.allSettled(
+      batch.map(async (ch) => {
+        try {
+          const result = await getTokenForChannel(ch.code, ch.name);
+          if (result.error) {
+            console.log(`[CRON] FAIL ${ch.name}: ${result.error}`);
+            return false;
+          } else {
+            console.log(`[CRON] OK ${ch.name} ${result.fromCache ? '(cache)' : '(fresh)'}`);
+            return true;
+          }
+        } catch (e) {
+          console.log(`[CRON] ERROR ${ch.name}: ${e.message}`);
+          return false;
+        }
+      })
+    );
+    results.forEach(r => r.status === 'fulfilled' && r.value ? ok++ : fail++);
   }
-  console.log(`[CRON] Done: ${ok} OK, ${fail} failed`);
+  console.log(`[CRON] Done: ${ok} OK, ${fail} failed (cache size: ${tokenCache.size})`);
 }
 
 // Refresh tokens every 3 hours

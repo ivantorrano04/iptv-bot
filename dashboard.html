@@ -183,6 +183,21 @@
         .tag-laliga { background: rgba(255,87,34,0.2); color: #ff7043; }
         .tag-euro { background: rgba(0,0,0,0.3); color: #aaa; }
 
+        /* CACHE INDICATOR */
+        .cache-badge { font-size: 9px; padding: 2px 6px; border-radius: 3px; font-weight: 600; display: inline-flex; align-items: center; gap: 3px; }
+        .cache-badge.cached { background: rgba(0,230,118,0.15); color: #00e676; }
+        .cache-badge.no-cache { background: rgba(255,255,255,0.05); color: #555; }
+        .cache-ttl { font-size: 9px; color: var(--text2); }
+
+        /* CACHE STATS PANEL */
+        .cache-panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; display: none; }
+        .cache-panel.visible { display: block; }
+        .cache-panel h3 { font-size: 13px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+        .cache-bar { display: flex; gap: 16px; flex-wrap: wrap; }
+        .cache-stat { background: var(--bg); border-radius: 8px; padding: 10px 14px; min-width: 100px; }
+        .cache-stat .value { font-size: 22px; font-weight: 700; color: var(--accent); }
+        .cache-stat .label { font-size: 10px; color: var(--text2); margin-top: 2px; }
+
         /* MODAL */
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 200; align-items: center; justify-content: center; }
         .modal-overlay.show { display: flex; }
@@ -284,9 +299,20 @@
 
     <!-- CHANNELS TAB -->
     <div class="tab-content active" id="tab-channels">
+        <!-- CACHE STATS PANEL -->
+        <div class="cache-panel" id="cache-panel">
+            <h3>🗄️ Cache de Tokens <button onclick="toggleCachePanel()" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:14px;">✕</button></h3>
+            <div class="cache-bar">
+                <div class="cache-stat"><div class="value" id="cache-total">0</div><div class="label">Tokens cacheados</div></div>
+                <div class="cache-stat"><div class="value" id="cache-hits">0</div><div class="label">Hits totales</div></div>
+                <div class="cache-stat"><div class="value" id="cache-uptime">0m</div><div class="label">Uptime servidor</div></div>
+                <div class="cache-stat"><div class="value" id="cache-avg-ttl">0m</div><div class="label">TTL medio restante</div></div>
+            </div>
+        </div>
         <div class="section-title">
             <h2 id="section-heading">🇪🇸 Canales de España <span class="count" id="channel-count"></span></h2>
             <div class="view-toggle">
+                <button onclick="toggleCachePanel()" style="background:var(--bg);border:1px solid var(--border);color:var(--text2);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px;margin-right:8px;">🗄️ Cache</button>
                 <button class="active" onclick="setView('normal', this)">Normal</button>
                 <button onclick="setView('compact', this)">Compacto</button>
             </div>
@@ -505,6 +531,7 @@ function renderChannels() {
                     <span class="country-badge">${flag} ${country}</span>
                     <span>
                         ${provider ? `<span class="provider-tag ${provider.cls}">${provider.tag}</span>` : ''}
+                        ${getCacheBadge(ch)}
                         ${ch.viewers > 0 ? `<span class="viewers">👀 ${ch.viewers}</span>` : ''}
                     </span>
                 </div>
@@ -752,6 +779,9 @@ async function autoExtract(name, code, btn) {
             btn.style.background = 'var(--green)';
             showToast(`✅ M3U8 extraído y copiado (${data.elapsed})`);
             
+            // Refresh cache stats and channel display
+            loadCacheStats().then(() => renderChannels());
+            
             // Scroll to result
             document.getElementById('tool-panel').scrollIntoView({ behavior: 'smooth' });
         } else {
@@ -773,6 +803,43 @@ async function autoExtract(name, code, btn) {
     }, 3000);
 }
 
+// === CACHE STATS ===
+let cacheStats = {};
+
+async function loadCacheStats() {
+    try {
+        const res = await fetch('/api/cache-stats');
+        const data = await res.json();
+        cacheStats = {};
+        (data.stats || []).forEach(s => {
+            cacheStats[s.name + '|' + s.code] = s;
+        });
+        document.getElementById('cache-total').textContent = data.total || 0;
+        const totalHits = (data.stats || []).reduce((sum, s) => sum + (s.hits || 0), 0);
+        document.getElementById('cache-hits').textContent = totalHits;
+        const upSec = data.uptime || 0;
+        document.getElementById('cache-uptime').textContent = upSec >= 3600 ? Math.floor(upSec / 3600) + 'h' : Math.floor(upSec / 60) + 'm';
+        const avgTtl = data.stats?.length ? data.stats.reduce((s, e) => s + e.ttlRemaining, 0) / data.stats.length : 0;
+        document.getElementById('cache-avg-ttl').textContent = avgTtl >= 3600 ? Math.floor(avgTtl / 3600) + 'h' : Math.floor(avgTtl / 60) + 'm';
+    } catch { /* server might not be running */ }
+}
+
+function toggleCachePanel() {
+    const panel = document.getElementById('cache-panel');
+    panel.classList.toggle('visible');
+    if (panel.classList.contains('visible')) loadCacheStats();
+}
+
+function getCacheBadge(ch) {
+    const key = ch.name + '|' + ch.code;
+    const s = cacheStats[key];
+    if (s && s.alive) {
+        const mins = Math.floor(s.ttlRemaining / 60);
+        return `<span class="cache-badge cached">⚡ cached</span> <span class="cache-ttl">${mins}m</span>`;
+    }
+    return `<span class="cache-badge no-cache">—</span>`;
+}
+
 // === KEYBOARD SHORTCUT ===
 document.addEventListener('keydown', e => {
     if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
@@ -786,6 +853,9 @@ document.addEventListener('keydown', e => {
 
 // === INIT ===
 loadAllChannels();
+loadCacheStats();
+// Refresh cache stats every 60 seconds
+setInterval(loadCacheStats, 60000);
 </script>
 </body>
 </html>
