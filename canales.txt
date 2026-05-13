@@ -56,6 +56,9 @@ Teledeporte,es,Deportes
 #
 # === MOTOR ===
 DAZN F1,es,Motor
+Sky Sports F1,gb,Motor
+Sky Sport F1,it,Motor
+Sky Sport Moto GP,it,Motor
 #
 # === TENIS ===
 Tennis Channel,us,Tenis
@@ -65,6 +68,40 @@ SuperSport Tennis,za,Tenis
 #
 # === GOLF ===
 Movistar Golf,es,Golf
+Sky Sports Golf,gb,Golf
+Golf TV,us,Golf
+#
+# === BALONCESTO ===
+Sky Sport NBA,it,Baloncesto
+#
+# === RUGBY ===
+SuperSport Rugby,za,Rugby
+#
+# === BOXEO / COMBATE ===
+Sky Sports Action,gb,Boxeo
+Sky Sports Arena,gb,Boxeo
+#
+# === PREMIER LEAGUE ===
+Sky Sports Football,gb,Premier League
+Sky Sports Premier League,gb,Premier League
+TNT Sports 1,gb,Premier League
+TNT Sports 2,gb,Premier League
+TNT Sports 3,gb,Premier League
+#
+# === FUTBOL EUROPA ===
+RMC Sport 1,fr,Futbol Europa
+RMC Sport 2,fr,Futbol Europa
+Canal Sport,fr,Futbol Europa
+Canal Sport360,fr,Futbol Europa
+#
+# === CRICKET ===
+Sky Sports Cricket,gb,Cricket
+#
+# === MULTIDEPORTE ===
+Sky Sports Main Event,gb,Multideporte
+Euro Sport 1,it,Multideporte
+Euro Sport 2,it,Multideporte
+Rai Sport,it,Multideporte
 #
 # === TV CLUBS ===
 Barca TV,es,Clubs
