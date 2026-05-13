@@ -681,13 +681,13 @@ function buildM3u8(canales, host) {
 // ─── XMLTV EPG endpoint ────────────────────────────────────────────────────────
 // Maps football-data.org competition IDs to our IPTV channels (in priority order)
 const COMP_CHANNEL_MAP = {
-  2:   { name: 'Champions League',      channels: ['m-liga-de-campeones-1.iptv','m-liga-de-campeones-2.iptv','m-liga-de-campeones-3.iptv','m-liga-de-campeones-4.iptv','m-liga-de-campeones-5.iptv','m-liga-de-campeones-6.iptv','m-liga-de-campeones-7.iptv','m-liga-de-campeones-8.iptv'] },
-  140: { name: 'La Liga',               channels: ['m-laliga.iptv','m-laliga-2.iptv','dazn-laliga.iptv','dazn-laliga-2.iptv','gol-play.iptv'] },
-  78:  { name: 'Bundesliga',            channels: ['dazn-1.iptv','dazn-2.iptv'] },
-  135: { name: 'Serie A',               channels: ['dazn-3.iptv','dazn-4.iptv'] },
-  2021:{ name: 'Eredivisie',            channels: ['dazn-1.iptv'] },
-  2015:{ name: 'Ligue 1',               channels: ['dazn-2.iptv'] },
-  2003:{ name: 'Primeira Liga',         channels: ['dazn-3.iptv'] },
+  2001: { name: 'Champions League',      channels: ['m-liga-de-campeones-1.iptv','m-liga-de-campeones-2.iptv','m-liga-de-campeones-3.iptv','m-liga-de-campeones-4.iptv','m-liga-de-campeones-5.iptv','m-liga-de-campeones-6.iptv','m-liga-de-campeones-7.iptv','m-liga-de-campeones-8.iptv'] },
+  2014: { name: 'La Liga',               channels: ['m-laliga.iptv','m-laliga-2.iptv','dazn-laliga.iptv','dazn-laliga-2.iptv','gol-play.iptv'] },
+  2002: { name: 'Bundesliga',            channels: ['dazn-1.iptv','dazn-2.iptv'] },
+  2019: { name: 'Serie A',               channels: ['dazn-3.iptv','dazn-4.iptv'] },
+  2003: { name: 'Eredivisie',            channels: ['dazn-1.iptv'] },
+  2015: { name: 'Ligue 1',               channels: ['dazn-2.iptv'] },
+  2017: { name: 'Primeira Liga',         channels: ['dazn-3.iptv'] },
 };
 
 let epgXmlCache = { ts: 0, xml: null };
