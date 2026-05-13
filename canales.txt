@@ -57,6 +57,12 @@ Teledeporte,es,Deportes
 # === MOTOR ===
 DAZN F1,es,Motor
 #
+# === TENIS ===
+Tennis Channel,us,Tenis
+Sky Sports Tennis,gb,Tenis
+Sky Sport Tennis,de,Tenis
+SuperSport Tennis,za,Tenis
+#
 # === GOLF ===
 Movistar Golf,es,Golf
 #
