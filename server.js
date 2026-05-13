@@ -142,9 +142,13 @@ async function verifyToken(m3u8Url) {
       headers: UPSTREAM_HEADERS,
       signal: AbortSignal.timeout(5000)
     });
-    return resp.ok;
+    // Only 401/403 means the token has definitively expired.
+    // 5xx = channel backend offline (keep cached token to avoid re-extract loop).
+    // 405 = HEAD not supported (keep cached token).
+    return resp.status !== 401 && resp.status !== 403;
   } catch {
-    return false;
+    // ECONNRESET / timeout — keep cached token (benefit of the doubt)
+    return true;
   }
 }
 
@@ -239,7 +243,7 @@ app.get('/play/:code/:name', async (req, res) => {
     // Fetch upstream m3u8
     let upstream = await fetch(token.m3u8Url, { headers: UPSTREAM_HEADERS });
 
-    // If 403/401, token expired — extract fresh (max 2 retries)
+    // If 401/403, token expired — extract fresh (max 2 retries)
     if (upstream.status === 403 || upstream.status === 401) {
       console.log(`[PLAY] Token expired (${upstream.status}), re-extracting...`);
       token = await getTokenForChannel(code, decodedName, { forceRefresh: true });
@@ -256,8 +260,19 @@ app.get('/play/:code/:name', async (req, res) => {
       }
     }
 
+    // If 502/503/504, backend is overloaded — retry once with a fresh token after a short wait
+    if (upstream.status === 502 || upstream.status === 503 || upstream.status === 504) {
+      console.log(`[PLAY] Backend error (${upstream.status}), retrying with fresh token...`);
+      await new Promise(r => setTimeout(r, 2000));
+      token = await getTokenForChannel(code, decodedName, { forceRefresh: true });
+      if (!token.error) {
+        upstream = await fetch(token.m3u8Url, { headers: UPSTREAM_HEADERS });
+      }
+    }
+
     if (!upstream.ok) {
-      return res.status(upstream.status).type('text/plain').send(`# Upstream error ${upstream.status}`);
+      console.log(`[PLAY] Upstream returned ${upstream.status} for ${decodedName}`);
+      return res.status(upstream.status).type('text/plain').send(`# Canal no disponible (${upstream.status}): ${decodedName}`);
     }
 
     // Rewrite m3u8 URLs to go through our proxy
@@ -277,13 +292,21 @@ app.get('/play/:code/:name', async (req, res) => {
 // === Generate M3U8 playlist pointing to this server ===
 const fs = require('fs');
 
-app.get('/playlist.m3u8', (req, res) => {
+// Cached channel statuses from API (refreshed with Gist updates)
+let cachedChannelStatuses = null;
+
+app.get('/playlist.m3u8', async (req, res) => {
   const host = req.query.host || req.headers.host || 'localhost:3000';
-  const protocol = req.query.protocol || 'http';
+  const protocol = req.query.protocol || (req.headers['x-forwarded-proto'] || req.protocol);
   const canalFile = path.join(__dirname, 'canales.txt');
 
   if (!fs.existsSync(canalFile)) {
     return res.status(404).send('#EXTM3U\n# canales.txt not found');
+  }
+
+  // Fetch statuses if not cached yet (non-blocking, best effort)
+  if (!cachedChannelStatuses) {
+    cachedChannelStatuses = await fetchChannelStatuses().catch(() => null);
   }
 
   const lines = fs.readFileSync(canalFile, 'utf-8').split('\n');
@@ -297,6 +320,12 @@ app.get('/playlist.m3u8', (req, res) => {
     const name = parts[0].trim();
     const code = parts[1] ? parts[1].trim() : 'es';
     const group = parts[2] ? parts[2].trim() : 'General';
+
+    // Skip channels the API reports as offline
+    if (cachedChannelStatuses) {
+      const status = cachedChannelStatuses.get(name.toLowerCase());
+      if (status === 'offline') continue;
+    }
 
     const encodedName = encodeURIComponent(name);
     m3u += `#EXTINF:-1 group-title="${group}",${name}\n`;
@@ -414,13 +443,48 @@ function buildM3u8(canales, host) {
   return m3u;
 }
 
+// Fetch channel online status from the cdnlivetv API
+async function fetchChannelStatuses() {
+  try {
+    const r = await fetch('https://api.cdnlivetv.tv/api/v1/channels/?user=cdnlivetv&plan=free', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    const channels = data.channels || (Array.isArray(data) ? data : []);
+    // Build a map: lowercase name → status
+    const statusMap = new Map();
+    for (const ch of channels) {
+      statusMap.set(ch.name.toLowerCase(), ch.status || 'unknown');
+    }
+    return statusMap;
+  } catch (e) {
+    console.log(`[API] Could not fetch channel statuses: ${e.message}`);
+    return null;
+  }
+}
+
 async function updateGist(host) {
   if (!GITHUB_TOKEN) {
     console.log('[GIST] No GITHUB_TOKEN set, skipping Gist update');
     return;
   }
-  const canales = readCanales();
+  let canales = readCanales();
   if (!canales.length) return;
+
+  // Filter out channels the API knows are offline
+  const statuses = await fetchChannelStatuses();
+  if (statuses) {
+    cachedChannelStatuses = statuses; // update shared cache
+    const before = canales.length;
+    canales = canales.filter(ch => {
+      const status = statuses.get(ch.name.toLowerCase());
+      return status !== 'offline'; // include 'online', 'unknown', or not in API
+    });
+    console.log(`[GIST] Status filter: ${before} → ${canales.length} channels (removed ${before - canales.length} offline)`);
+  }
+
   const m3u = buildM3u8(canales, host);
   try {
     const resp = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
