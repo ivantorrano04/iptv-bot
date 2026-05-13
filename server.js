@@ -391,6 +391,208 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime(), cache: tokenCache.size });
 });
 
+// === Real-time channel status dashboard ===
+let statusCheckCache = { ts: 0, results: [] };
+const STATUS_CHECK_TTL = 2 * 60 * 1000; // cache 2 minutes
+
+async function checkAllChannelStatuses() {
+  if (Date.now() - statusCheckCache.ts < STATUS_CHECK_TTL) {
+    return statusCheckCache.results;
+  }
+
+  const canales = readCanales ? readCanales() : [];
+  const CONCURRENCY = 8;
+  const results = [];
+
+  for (let i = 0; i < canales.length; i += CONCURRENCY) {
+    const batch = canales.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.all(batch.map(async (ch) => {
+      const cacheKey = `${ch.code}:${ch.name}`;
+      const cached = tokenCache.get(cacheKey);
+
+      if (!cached || cached.error) {
+        return { name: ch.name, group: ch.group, httpStatus: null, online: false, reason: 'sin token' };
+      }
+
+      try {
+        const resp = await fetch(cached.m3u8Url, {
+          method: 'HEAD',
+          headers: UPSTREAM_HEADERS,
+          signal: AbortSignal.timeout(5000)
+        });
+        // 200/206 = live, 405 = HEAD not allowed but stream exists, 403/401 = token expired
+        const online = resp.status === 200 || resp.status === 206 || resp.status === 405;
+        return { name: ch.name, group: ch.group, httpStatus: resp.status, online };
+      } catch (e) {
+        return { name: ch.name, group: ch.group, httpStatus: null, online: false, reason: 'timeout/error' };
+      }
+    }));
+    results.push(...batchResults);
+  }
+
+  statusCheckCache = { ts: Date.now(), results };
+  return results;
+}
+
+app.get('/status', async (req, res) => {
+  const results = await checkAllChannelStatuses();
+  const online = results.filter(r => r.online);
+  const offline = results.filter(r => !r.online);
+
+  if (req.query.format === 'json') {
+    return res.json({ checked: new Date().toISOString(), online: online.length, offline: offline.length, channels: results });
+  }
+
+  // Group by group
+  const groups = {};
+  for (const r of results) {
+    if (!groups[r.group]) groups[r.group] = [];
+    groups[r.group].push(r);
+  }
+
+  const groupHtml = Object.entries(groups).map(([group, chs]) => {
+    const rows = chs.map(r => {
+      const dot = r.online ? '🟢' : '🔴';
+      const statusBadge = r.httpStatus ? `<span style="color:#888;font-size:0.8em">${r.httpStatus}</span>` : `<span style="color:#888;font-size:0.8em">${r.reason || '-'}</span>`;
+      return `<tr><td>${dot}</td><td>${r.name}</td><td>${statusBadge}</td></tr>`;
+    }).join('');
+    const groupOnline = chs.filter(c => c.online).length;
+    const color = groupOnline === 0 ? '#f44336' : groupOnline === chs.length ? '#4caf50' : '#ff9800';
+    return `<h3 style="color:${color};margin-top:20px">${group} (${groupOnline}/${chs.length})</h3><table>${rows}</table>`;
+  }).join('');
+
+  const ts = new Date().toLocaleString('es-ES', { timeZone: 'Europe/Madrid' });
+  res.type('text/html').send(`<!DOCTYPE html><html>
+<head>
+  <title>Estado Canales IPTV</title>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="120">
+  <style>
+    body{font-family:sans-serif;background:#121212;color:#eee;padding:20px;max-width:800px;margin:auto}
+    h1{color:#fff}h3{margin-bottom:6px}
+    table{border-collapse:collapse;width:100%;margin-bottom:10px}
+    td{padding:6px 10px;border-bottom:1px solid #222}
+    tr:hover{background:#1e1e1e}
+    .summary{font-size:1.1em;margin:10px 0 24px}
+    .on{color:#4caf50}.off{color:#f44336}.ts{color:#666;font-size:0.8em}
+    a{color:#90caf9;text-decoration:none}
+  </style>
+</head>
+<body>
+  <h1>📺 Estado en tiempo real</h1>
+  <div class="summary">
+    <span class="on">🟢 ${online.length} emitiendo ahora</span> &nbsp;|&nbsp;
+    <span class="off">🔴 ${offline.length} offline</span>
+    <span class="ts"> — ${ts} · actualiza cada 2 min</span>
+  </div>
+  <p style="color:#888;font-size:0.85em">Los canales 🔴 fuera de evento (Champions, LaLiga, DAZN) volverán a estar disponibles cuando haya partido. <a href="/epg">Ver próximos partidos →</a></p>
+  ${groupHtml}
+</body></html>`);
+});
+
+// === EPG: próximos eventos deportivos (desde API pública) ===
+app.get('/epg', async (req, res) => {
+  // Fetch upcoming matches from open football data APIs
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  const in7days = new Date(now.getTime() + 7 * 24 * 3600 * 1000).toISOString().split('T')[0];
+
+  let fixtures = [];
+  const errors = [];
+
+  // La Liga (competition id 140) + Champions League (2) from football-data.org (free tier)
+  const FOOTBALL_API_KEY = process.env.FOOTBALL_DATA_API_KEY || '';
+  const competitions = [
+    { id: 2, name: 'Champions League', channel: 'M Liga de Campeones' },
+    { id: 140, name: 'La Liga', channel: 'M LaLiga / DAZN LaLiga' },
+    { id: 78, name: 'Bundesliga', channel: 'DAZN' },
+    { id: 135, name: 'Serie A', channel: 'DAZN' },
+  ];
+
+  for (const comp of competitions) {
+    try {
+      const url = `https://api.football-data.org/v4/competitions/${comp.id}/matches?dateFrom=${today}&dateTo=${in7days}&status=SCHEDULED`;
+      const r = await fetch(url, {
+        headers: FOOTBALL_API_KEY
+          ? { 'X-Auth-Token': FOOTBALL_API_KEY }
+          : { 'X-Auth-Token': '' },
+        signal: AbortSignal.timeout(5000)
+      });
+      if (r.ok) {
+        const data = await r.json();
+        for (const m of (data.matches || [])) {
+          const kickoff = new Date(m.utcDate);
+          const localTime = kickoff.toLocaleString('es-ES', { timeZone: 'Europe/Madrid', weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+          fixtures.push({
+            comp: comp.name,
+            channel: comp.channel,
+            home: m.homeTeam?.name || '?',
+            away: m.awayTeam?.name || '?',
+            time: localTime,
+            ts: kickoff.getTime()
+          });
+        }
+      }
+    } catch (e) {
+      errors.push(`${comp.name}: ${e.message}`);
+    }
+  }
+
+  fixtures.sort((a, b) => a.ts - b.ts);
+
+  if (req.query.format === 'json') {
+    return res.json({ from: today, to: in7days, fixtures, errors });
+  }
+
+  if (!FOOTBALL_API_KEY) {
+    return res.type('text/html').send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>EPG</title>
+    <style>body{font-family:sans-serif;background:#121212;color:#eee;padding:20px;max-width:800px;margin:auto}a{color:#90caf9}</style></head><body>
+    <h1>📅 Próximos partidos</h1>
+    <div style="background:#1e1e1e;border:1px solid #ff9800;padding:16px;border-radius:8px;margin:20px 0">
+      <b style="color:#ff9800">⚠️ Falta configurar FOOTBALL_DATA_API_KEY</b><br><br>
+      Para ver el calendario de partidos, crea una cuenta gratuita en 
+      <a href="https://www.football-data.org/" target="_blank">football-data.org</a> 
+      (plan gratuito: 10 peticiones/min, datos de La Liga, Champions, etc.)<br><br>
+      Luego añade la variable de entorno en Railway:<br>
+      <code style="background:#333;padding:4px 8px;border-radius:4px">FOOTBALL_DATA_API_KEY = tu_api_key</code>
+    </div>
+    <p>Mientras tanto, puedes consultar los horarios en:</p>
+    <ul>
+      <li><a href="https://www.laliga.com/calendar" target="_blank">LaLiga — calendario oficial</a></li>
+      <li><a href="https://www.uefa.com/uefachampionsleague/fixtures/" target="_blank">UEFA Champions League — fixtures</a></li>
+      <li><a href="https://www.dazn.com/es-ES/schedule" target="_blank">DAZN España — programación</a></li>
+      <li><a href="https://ver.movistarplus.es/programacion/" target="_blank">Movistar+ — programación</a></li>
+    </ul>
+    <p><a href="/status">← Volver al estado de canales</a></p>
+    </body></html>`);
+  }
+
+  const rows = fixtures.map(f =>
+    `<tr><td>${f.time}</td><td><b>${f.home}</b> vs <b>${f.away}</b></td><td style="color:#aaa">${f.comp}</td><td style="color:#90caf9">${f.channel}</td></tr>`
+  ).join('');
+
+  res.type('text/html').send(`<!DOCTYPE html><html>
+<head>
+  <meta charset="utf-8"><title>EPG - Próximos partidos</title>
+  <style>
+    body{font-family:sans-serif;background:#121212;color:#eee;padding:20px;max-width:900px;margin:auto}
+    h1{color:#fff}table{border-collapse:collapse;width:100%}
+    th{text-align:left;padding:8px 12px;background:#333}
+    td{padding:8px 12px;border-bottom:1px solid #222}
+    tr:hover{background:#1e1e1e}a{color:#90caf9;text-decoration:none}
+  </style>
+</head>
+<body>
+  <h1>📅 Próximos partidos (próximos 7 días)</h1>
+  <p style="color:#888">Los canales estarán disponibles durante estos eventos. <a href="/status">← Estado actual de canales</a></p>
+  ${fixtures.length === 0
+    ? '<p style="color:#f44336">No se encontraron partidos próximos.</p>'
+    : `<table><thead><tr><th>Hora (Madrid)</th><th>Partido</th><th>Competición</th><th>Canal IPTV</th></tr></thead><tbody>${rows}</tbody></table>`
+  }
+  ${errors.length ? `<p style="color:#888;font-size:0.8em">Errores: ${errors.join(', ')}</p>` : ''}
+</body></html>`);
+});
+
 // === Cache stats API — dashboard uses this ===
 app.get('/api/cache-stats', (req, res) => {
   const stats = [];
