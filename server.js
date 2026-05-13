@@ -518,20 +518,22 @@ app.get('/epg', async (req, res) => {
           : { 'X-Auth-Token': '' },
         signal: AbortSignal.timeout(5000)
       });
-      if (r.ok) {
-        const data = await r.json();
-        for (const m of (data.matches || [])) {
-          const kickoff = new Date(m.utcDate);
-          const localTime = kickoff.toLocaleString('es-ES', { timeZone: 'Europe/Madrid', weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-          fixtures.push({
-            comp: comp.name,
-            channel: comp.channel,
-            home: m.homeTeam?.name || '?',
-            away: m.awayTeam?.name || '?',
-            time: localTime,
-            ts: kickoff.getTime()
-          });
-        }
+      if (!r.ok) {
+        errors.push(`${comp.name}: HTTP ${r.status}`);
+        continue;
+      }
+      const data = await r.json();
+      for (const m of (data.matches || [])) {
+        const kickoff = new Date(m.utcDate);
+        const localTime = kickoff.toLocaleString('es-ES', { timeZone: 'Europe/Madrid', weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        fixtures.push({
+          comp: comp.name,
+          channel: comp.channel,
+          home: m.homeTeam?.name || '?',
+          away: m.awayTeam?.name || '?',
+          time: localTime,
+          ts: kickoff.getTime()
+        });
       }
     } catch (e) {
       errors.push(`${comp.name}: ${e.message}`);
