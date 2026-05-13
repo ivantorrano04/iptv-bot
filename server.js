@@ -298,6 +298,7 @@ let cachedChannelStatuses = null;
 app.get('/playlist.m3u8', async (req, res) => {
   const host = req.query.host || req.headers.host || 'localhost:3000';
   const protocol = req.query.protocol || (req.headers['x-forwarded-proto'] || req.protocol);
+  const baseUrl = `${protocol}://${host}`;
   const canalFile = path.join(__dirname, 'canales.txt');
 
   if (!fs.existsSync(canalFile)) {
@@ -310,7 +311,7 @@ app.get('/playlist.m3u8', async (req, res) => {
   }
 
   const lines = fs.readFileSync(canalFile, 'utf-8').split('\n');
-  let m3u = '#EXTM3U\n';
+  let m3u = `#EXTM3U url-tvg="${baseUrl}/epg.xml" x-tvg-url="${baseUrl}/epg.xml"\n`;
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -327,12 +328,18 @@ app.get('/playlist.m3u8', async (req, res) => {
       if (status === 'offline') continue;
     }
 
-    const encodedName = encodeURIComponent(name);
-    m3u += `#EXTINF:-1 group-title="${group}",${name}\n`;
-    m3u += `${protocol}://${host}/play/${code}/${encodedName}\n`;
+    const tvgId = name.toLowerCase()
+      .replace(/[áàâä]/g, 'a').replace(/[éèêë]/g, 'e')
+      .replace(/[íìîï]/g, 'i').replace(/[óòôö]/g, 'o')
+      .replace(/[úùûü]/g, 'u').replace(/ñ/g, 'n')
+      .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + '.iptv';
+
+    m3u += `#EXTINF:-1 tvg-id="${tvgId}" tvg-name="${name}" group-title="${group}",${name}\n`;
+    m3u += `${baseUrl}/play/${code}/${encodeURIComponent(name)}\n`;
   }
 
   res.set('Content-Type', 'application/x-mpegURL');
+  res.set('Access-Control-Allow-Origin', '*');
   res.send(m3u);
 });
 
