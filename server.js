@@ -495,23 +495,23 @@ app.get('/epg', async (req, res) => {
   // Fetch upcoming matches from open football data APIs
   const now = new Date();
   const today = now.toISOString().split('T')[0];
-  const in7days = new Date(now.getTime() + 7 * 24 * 3600 * 1000).toISOString().split('T')[0];
+  const in30days = new Date(now.getTime() + 30 * 24 * 3600 * 1000).toISOString().split('T')[0];
 
   let fixtures = [];
   const errors = [];
 
-  // La Liga (competition id 140) + Champions League (2) from football-data.org (free tier)
+  // La Liga + Champions League from football-data.org (free tier, TIER_ONE)
   const FOOTBALL_API_KEY = process.env.FOOTBALL_DATA_API_KEY || '';
   const competitions = [
-    { id: 2, name: 'Champions League', channel: 'M Liga de Campeones' },
-    { id: 140, name: 'La Liga', channel: 'M LaLiga / DAZN LaLiga' },
-    { id: 78, name: 'Bundesliga', channel: 'DAZN' },
-    { id: 135, name: 'Serie A', channel: 'DAZN' },
+    { id: 2001, name: 'Champions League', channel: 'M Liga de Campeones' },
+    { id: 2014, name: 'La Liga', channel: 'M LaLiga / DAZN LaLiga' },
+    { id: 2002, name: 'Bundesliga', channel: 'DAZN' },
+    { id: 2019, name: 'Serie A', channel: 'DAZN' },
   ];
 
   for (const comp of competitions) {
     try {
-      const url = `https://api.football-data.org/v4/competitions/${comp.id}/matches?dateFrom=${today}&dateTo=${in7days}&status=SCHEDULED`;
+      const url = `https://api.football-data.org/v4/competitions/${comp.id}/matches?dateFrom=${today}&dateTo=${in30days}`;
       const r = await fetch(url, {
         headers: FOOTBALL_API_KEY
           ? { 'X-Auth-Token': FOOTBALL_API_KEY }
@@ -543,7 +543,7 @@ app.get('/epg', async (req, res) => {
   fixtures.sort((a, b) => a.ts - b.ts);
 
   if (req.query.format === 'json') {
-    return res.json({ from: today, to: in7days, fixtures, errors });
+    return res.json({ from: today, to: in30days, fixtures, errors });
   }
 
   if (!FOOTBALL_API_KEY) {
@@ -721,7 +721,7 @@ async function buildEpgXml(canales) {
   if (FOOTBALL_API_KEY) {
     for (const [compId, compInfo] of Object.entries(COMP_CHANNEL_MAP)) {
       try {
-        const url = `https://api.football-data.org/v4/competitions/${compId}/matches?dateFrom=${today}&dateTo=${in14days}&status=SCHEDULED,LIVE`;
+        const url = `https://api.football-data.org/v4/competitions/${compId}/matches?dateFrom=${today}&dateTo=${in14days}`;
         const r = await fetch(url, {
           headers: { 'X-Auth-Token': FOOTBALL_API_KEY },
           signal: AbortSignal.timeout(6000)
