@@ -636,14 +636,137 @@ function readCanales() {
     });
 }
 
+// ─── Channel metadata: tvg-id and logos ───────────────────────────────────────
+const CHANNEL_LOGOS = {
+  'DAZN LaLiga':           'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/DAZN_logo.svg/200px-DAZN_logo.svg.png',
+  'DAZN LaLiga 2':         'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/DAZN_logo.svg/200px-DAZN_logo.svg.png',
+  'M LALIGA':              'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/LaLiga_logo_2023.svg/200px-LaLiga_logo_2023.svg.png',
+  'M LALIGA 2':            'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/LaLiga_logo_2023.svg/200px-LaLiga_logo_2023.svg.png',
+  'Gol Play':              'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/LaLiga_logo_2023.svg/200px-LaLiga_logo_2023.svg.png',
+  'DAZN 1':                'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/DAZN_logo.svg/200px-DAZN_logo.svg.png',
+  'DAZN 2':                'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/DAZN_logo.svg/200px-DAZN_logo.svg.png',
+  'DAZN 3':                'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/DAZN_logo.svg/200px-DAZN_logo.svg.png',
+  'DAZN 4':                'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/DAZN_logo.svg/200px-DAZN_logo.svg.png',
+  'DAZN F1':               'https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/F1.svg/200px-F1.svg.png',
+  'Euro Sport 1':          'https://upload.wikimedia.org/wikipedia/commons/thumb/c/ce/Eurosport_1_Logo_2015.svg/200px-Eurosport_1_Logo_2015.svg.png',
+  'Euro Sport 2':          'https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Eurosport_2_logo_2015.svg/200px-Eurosport_2_logo_2015.svg.png',
+  'Teledeporte':           'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Teledeporte.svg/200px-Teledeporte.svg.png',
+  'TVE La 1':              'https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/Logo_TVE_2021.svg/200px-Logo_TVE_2021.svg.png',
+  'TVE La 2':              'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fc/La_2_television_espanola_logo.svg/200px-La_2_television_espanola_logo.svg.png',
+  'beIN SPORTS N':         'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/BeIN_SPORTS_logo.svg/200px-BeIN_SPORTS_logo.svg.png',
+  'beIN SPORTS XTRA':      'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/BeIN_SPORTS_logo.svg/200px-BeIN_SPORTS_logo.svg.png',
+};
+
+// Generate a stable tvg-id from channel name
+function toTvgId(name) {
+  return name.toLowerCase()
+    .replace(/[áàâä]/g, 'a').replace(/[éèêë]/g, 'e')
+    .replace(/[íìîï]/g, 'i').replace(/[óòôö]/g, 'o')
+    .replace(/[úùûü]/g, 'u').replace(/ñ/g, 'n')
+    .replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+    + '.iptv';
+}
+
 function buildM3u8(canales, host) {
-  let m3u = '#EXTM3U\n';
+  let m3u = `#EXTM3U url-tvg="${host}/epg.xml" x-tvg-url="${host}/epg.xml"\n`;
   for (const ch of canales) {
-    m3u += `#EXTINF:-1 group-title="${ch.group}",${ch.name}\n`;
+    const tvgId = toTvgId(ch.name);
+    const logo = CHANNEL_LOGOS[ch.name] || '';
+    m3u += `#EXTINF:-1 tvg-id="${tvgId}" tvg-name="${ch.name}" tvg-logo="${logo}" group-title="${ch.group}",${ch.name}\n`;
     m3u += `${host}/play/${ch.code}/${encodeURIComponent(ch.name)}\n`;
   }
   return m3u;
 }
+
+// ─── XMLTV EPG endpoint ────────────────────────────────────────────────────────
+// Maps football-data.org competition IDs to our IPTV channels (in priority order)
+const COMP_CHANNEL_MAP = {
+  2:   { name: 'Champions League',      channels: ['m-liga-de-campeones-1.iptv','m-liga-de-campeones-2.iptv','m-liga-de-campeones-3.iptv','m-liga-de-campeones-4.iptv','m-liga-de-campeones-5.iptv','m-liga-de-campeones-6.iptv','m-liga-de-campeones-7.iptv','m-liga-de-campeones-8.iptv'] },
+  140: { name: 'La Liga',               channels: ['m-laliga.iptv','m-laliga-2.iptv','dazn-laliga.iptv','dazn-laliga-2.iptv','gol-play.iptv'] },
+  78:  { name: 'Bundesliga',            channels: ['dazn-1.iptv','dazn-2.iptv'] },
+  135: { name: 'Serie A',               channels: ['dazn-3.iptv','dazn-4.iptv'] },
+  2021:{ name: 'Eredivisie',            channels: ['dazn-1.iptv'] },
+  2015:{ name: 'Ligue 1',               channels: ['dazn-2.iptv'] },
+  2003:{ name: 'Primeira Liga',         channels: ['dazn-3.iptv'] },
+};
+
+let epgXmlCache = { ts: 0, xml: null };
+const EPG_XML_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+function xmltvDate(date) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${date.getUTCFullYear()}${pad(date.getUTCMonth()+1)}${pad(date.getUTCDate())}${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}00 +0000`;
+}
+
+async function buildEpgXml(canales) {
+  if (epgXmlCache.xml && Date.now() - epgXmlCache.ts < EPG_XML_CACHE_TTL) {
+    return epgXmlCache.xml;
+  }
+
+  const FOOTBALL_API_KEY = process.env.FOOTBALL_DATA_API_KEY || '';
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  const in14days = new Date(now.getTime() + 14 * 24 * 3600 * 1000).toISOString().split('T')[0];
+
+  // Channel definitions
+  const channelDefs = canales.map(ch =>
+    `  <channel id="${toTvgId(ch.name)}">\n    <display-name lang="es">${ch.name}</display-name>\n  </channel>`
+  ).join('\n');
+
+  // Fetch fixtures grouped by competition
+  const programmes = [];
+
+  if (FOOTBALL_API_KEY) {
+    for (const [compId, compInfo] of Object.entries(COMP_CHANNEL_MAP)) {
+      try {
+        const url = `https://api.football-data.org/v4/competitions/${compId}/matches?dateFrom=${today}&dateTo=${in14days}&status=SCHEDULED,LIVE`;
+        const r = await fetch(url, {
+          headers: { 'X-Auth-Token': FOOTBALL_API_KEY },
+          signal: AbortSignal.timeout(6000)
+        });
+        if (!r.ok) continue;
+        const data = await r.json();
+        const matches = data.matches || [];
+
+        // Group matches by timeslot (same day, within 30min of each other)
+        // Assign to channels in order
+        const slots = {};
+        for (const m of matches) {
+          const slotKey = m.utcDate.substring(0, 13); // YYYY-MM-DDTHH
+          if (!slots[slotKey]) slots[slotKey] = [];
+          slots[slotKey].push(m);
+        }
+
+        for (const [, slotMatches] of Object.entries(slots)) {
+          slotMatches.forEach((m, idx) => {
+            const channelId = compInfo.channels[idx % compInfo.channels.length];
+            const start = new Date(m.utcDate);
+            const end = new Date(start.getTime() + 2 * 3600 * 1000); // 2h duration
+            const title = `${m.homeTeam?.name || '?'} vs ${m.awayTeam?.name || '?'}`;
+            const desc = `${compInfo.name} · ${start.toLocaleString('es-ES', { timeZone: 'Europe/Madrid', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}`;
+            programmes.push(
+              `  <programme start="${xmltvDate(start)}" stop="${xmltvDate(end)}" channel="${channelId}">\n    <title lang="es">${title}</title>\n    <desc lang="es">${desc}</desc>\n    <category lang="es">Fútbol</category>\n  </programme>`
+            );
+          });
+        }
+      } catch (e) {
+        console.log(`[EPG XML] Error comp ${compId}: ${e.message}`);
+      }
+    }
+  }
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE tv SYSTEM "xmltv.dtd">\n<tv generator-info-name="iptv-bot">\n${channelDefs}\n${programmes.join('\n')}\n</tv>`;
+  epgXmlCache = { ts: Date.now(), xml };
+  return xml;
+}
+
+app.get('/epg.xml', async (req, res) => {
+  const canales = readCanales();
+  const xml = await buildEpgXml(canales);
+  res.set('Content-Type', 'application/xml; charset=utf-8');
+  res.set('Access-Control-Allow-Origin', '*');
+  res.send(xml);
+});
 
 // Fetch channel online status from the cdnlivetv API
 async function fetchChannelStatuses() {
